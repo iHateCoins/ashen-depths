@@ -4,6 +4,7 @@ import { NavigationGrid } from '../navigation/Grid';
 import { findPath } from '../navigation/Pathfinder';
 import { DirectionalAnimator } from '../rendering/DirectionalAnimator';
 import { createDebugOptions, toggleDebug, type DebugOptions } from '../debug/DebugOptions';
+import { AutoCombat, type Enemy } from '../combat/AutoCombat';
 
 const WORLD_WIDTH = 2304;
 const WORLD_HEIGHT = 1536;
@@ -25,6 +26,10 @@ export class DungeonScene extends Phaser.Scene {
   private cloak!: Phaser.GameObjects.Triangle;
   private face!: Phaser.GameObjects.Triangle;
   private debugButton!: Phaser.GameObjects.Text;
+  private combat = new AutoCombat();
+  private enemies: Enemy[] = [];
+  private enemyVisuals = new Map<number, Phaser.GameObjects.Container>();
+  private kills = 0;
 
   constructor() { super('DungeonScene'); }
 
@@ -61,6 +66,16 @@ export class DungeonScene extends Phaser.Scene {
       block(1056, y, 480, 32);
     }
     this.movement = new MovementController({ x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 });
+    const practicePositions = [{x:900,y:740},{x:1280,y:740},{x:1160,y:940},{x:980,y:1030},{x:1420,y:850},{x:800,y:900}];
+    for (const [index, position] of practicePositions.entries()) {
+      if (!this.grid.isWalkable(this.grid.cellAt(position))) continue;
+      const enemy: Enemy = { id: index+1, position, hp: 100, maxHp: 100 };
+      this.enemies.push(enemy);
+      const shape = this.add.circle(0,0,18,0xa44949).setStrokeStyle(3,0xf1a49b);
+      const bar = this.add.rectangle(0,-29,40,5,0x7eb88e).setOrigin(0.5);
+      const container = this.add.container(position.x,position.y,[shape,bar]).setDepth(8);
+      this.enemyVisuals.set(enemy.id,container);
+    }
     const shadow = this.add.ellipse(0, 10, 34, 16, 0x000000, 0.45);
     const body = this.add.circle(0, 0, 17, 0x9cb2b6);
     this.cloak = this.add.triangle(0, 5, -13, 15, 0, -20, 13, 15, 0x526b72);
@@ -105,7 +120,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.add.text(14, 0, 'ASHEN DEPTHS · M01 / PR04', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.add.text(14, 0, 'ASHEN DEPTHS · M02 / PR01', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(32);
     this.debugButton = this.add.text(0, 8, 'DEBUG: OFF', {fontFamily:'Arial, sans-serif',fontSize:'14px',color:'#e3c99c',backgroundColor:'#243136',padding:{x:10,y:8}}).setScrollFactor(0).setDepth(110).setInteractive();
@@ -165,8 +180,20 @@ export class DungeonScene extends Phaser.Scene {
     const gait = state.motion === 'walk' ? Math.sin(state.phase * Math.PI / 2) : 0;
     this.cloak.setY(5 + gait * 3);
     this.face.setY(-11 + Math.abs(gait) * 2);
+    for (const attack of this.combat.update(this.movement.position,this.enemies,delta/1000)) {
+      const enemy = this.enemies.find(e=>e.id===attack.targetId);
+      if (!enemy) continue;
+      const pulse = this.add.circle(enemy.position.x,enemy.position.y,26,0xf4d28d,0.3).setDepth(12);
+      this.tweens.add({targets:pulse,alpha:0,scale:1.8,duration:220,onComplete:()=>pulse.destroy()});
+      const visual = this.enemyVisuals.get(enemy.id);
+      if (visual) {
+        const healthBar = visual.list[1] as Phaser.GameObjects.Rectangle;
+        healthBar.setScale(enemy.hp/enemy.maxHp,1);
+        if (enemy.hp<=0) {visual.destroy();this.enemyVisuals.delete(enemy.id);this.kills++;}
+      }
+    }
     if (this.debug.visible) this.redrawRoute();
     if (!this.movement.destination && !this.waypoints.length) this.marker.setVisible(false);
-    this.status.setText(`Tap/click to move · Wheel or +/- to zoom · Zoom ${this.zoom.toFixed(1)}x\nPosition: ${Math.round(x)}, ${Math.round(y)} · Facing: ${state.facing} · ${state.motion} · A* navigation`);
+    this.status.setText(`Tap/click to move · Wheel or +/- to zoom · Zoom ${this.zoom.toFixed(1)}x\nPosition: ${Math.round(x)}, ${Math.round(y)} · Facing: ${state.facing} · ${state.motion} · Auto-attack · Kills: ${this.kills}`);
   }
 }
