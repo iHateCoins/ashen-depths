@@ -147,8 +147,8 @@ export class DungeonScene extends Phaser.Scene {
     if(this.defeatOverlay) {
       const shade=this.defeatOverlay.list[0] as Phaser.GameObjects.Rectangle;
       shade.setSize(this.scale.width,this.scale.height);
-      this.defeatOverlay.list[1].setPosition(this.scale.width/2,this.scale.height/2-35);
-      this.defeatOverlay.list[2].setPosition(this.scale.width/2,this.scale.height/2+32);
+      (this.defeatOverlay.list[1] as Phaser.GameObjects.Text).setPosition(this.scale.width/2,this.scale.height/2-35);
+      (this.defeatOverlay.list[2] as Phaser.GameObjects.Text).setPosition(this.scale.width/2,this.scale.height/2+32);
     }
   }
 
