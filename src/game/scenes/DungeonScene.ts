@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { MovementController, type Point } from '../movement/MovementController';
 import { NavigationGrid } from '../navigation/Grid';
 import { findPath } from '../navigation/Pathfinder';
+import { DirectionalAnimator } from '../rendering/DirectionalAnimator';
+import { createDebugOptions, toggleDebug, type DebugOptions } from '../debug/DebugOptions';
 
 const WORLD_WIDTH = 2304;
 const WORLD_HEIGHT = 1536;
@@ -16,6 +18,13 @@ export class DungeonScene extends Phaser.Scene {
   private grid!: NavigationGrid;
   private waypoints: Point[] = [];
   private obstacleGraphics!: Phaser.GameObjects.Graphics;
+  private animator = new DirectionalAnimator();
+  private debug: DebugOptions = createDebugOptions();
+  private debugGraphics!: Phaser.GameObjects.Graphics;
+  private routeGraphics!: Phaser.GameObjects.Graphics;
+  private cloak!: Phaser.GameObjects.Triangle;
+  private face!: Phaser.GameObjects.Triangle;
+  private debugButton!: Phaser.GameObjects.Text;
 
   constructor() { super('DungeonScene'); }
 
@@ -54,10 +63,12 @@ export class DungeonScene extends Phaser.Scene {
     this.movement = new MovementController({ x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 });
     const shadow = this.add.ellipse(0, 10, 34, 16, 0x000000, 0.45);
     const body = this.add.circle(0, 0, 17, 0x9cb2b6);
-    const cloak = this.add.triangle(0, 5, -13, 15, 0, -20, 13, 15, 0x526b72);
-    const facing = this.add.triangle(0, -11, -6, 5, 0, -8, 6, 5, 0xe8c68c);
-    this.player = this.add.container(this.movement.position.x, this.movement.position.y, [shadow, body, cloak, facing]);
+    this.cloak = this.add.triangle(0, 5, -13, 15, 0, -20, 13, 15, 0x526b72);
+    this.face = this.add.triangle(0, -11, -6, 5, 0, -8, 6, 5, 0xe8c68c);
+    this.player = this.add.container(this.movement.position.x, this.movement.position.y, [shadow, body, this.cloak, this.face]);
     this.player.setDepth(10);
+    this.debugGraphics = this.add.graphics().setDepth(20).setVisible(false);
+    this.routeGraphics = this.add.graphics().setDepth(19).setVisible(false);
     this.marker = this.add.circle(0, 0, 12, 0xd9b56c, 0.22).setStrokeStyle(2, 0xeacb85).setVisible(false);
     this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
@@ -73,11 +84,13 @@ export class DungeonScene extends Phaser.Scene {
         this.waypoints = [];
         this.movement.stop();
         this.marker.setVisible(false);
+        this.redrawRoute();
         return;
       }
-      this.waypoints = path;
+      const finalPoint = path[path.length - 1];
+      this.waypoints = [...path];
       this.movement.moveTo(this.waypoints.shift()!);
-      const finalPoint = path.length ? path[path.length - 1] : this.movement.destination!;
+      this.redrawRoute();
       this.marker.setPosition(finalPoint.x, finalPoint.y).setVisible(true);
     });
 
@@ -86,19 +99,53 @@ export class DungeonScene extends Phaser.Scene {
     });
     this.input.keyboard?.on('keydown-PLUS', () => this.setZoom(this.zoom + 0.1));
     this.input.keyboard?.on('keydown-MINUS', () => this.setZoom(this.zoom - 0.1));
+    this.input.keyboard?.on('keydown-F3', () => this.toggleDebug());
 
     this.status = this.add.text(14, 14, '', {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.add.text(14, 0, 'ASHEN DEPTHS · M01 / PR02', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.add.text(14, 0, 'ASHEN DEPTHS · M01 / PR04', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(32);
+    this.debugButton = this.add.text(0, 8, 'DEBUG: OFF', {fontFamily:'Arial, sans-serif',fontSize:'14px',color:'#e3c99c',backgroundColor:'#243136',padding:{x:10,y:8}}).setScrollFactor(0).setDepth(110).setInteractive();
+    this.debugButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); this.toggleDebug(); });
+    this.refreshHud();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.refreshHud, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.scale.off(Phaser.Scale.Events.RESIZE, this.refreshHud, this));
   }
 
-  private refreshHud(): void { this.status.setWordWrapWidth(Math.max(240, this.scale.width - 28)); }
+  private refreshHud(): void {
+    this.status.setWordWrapWidth(Math.max(240, this.scale.width - 28));
+    this.debugButton?.setX(Math.max(8, this.scale.width - 130));
+  }
+
+  private toggleDebug(): void {
+    this.debug = toggleDebug(this.debug);
+    this.debugButton.setText(this.debug.visible ? 'DEBUG: ON' : 'DEBUG: OFF');
+    this.debugGraphics.setVisible(this.debug.visible);
+    this.routeGraphics.setVisible(this.debug.visible);
+    this.debugGraphics.clear();
+    if (this.debug.visible) {
+      this.debugGraphics.lineStyle(1, 0x75a5b2, 0.15);
+      for(let x=0;x<=WORLD_WIDTH;x+=32) this.debugGraphics.lineBetween(x,0,x,WORLD_HEIGHT);
+      for(let y=0;y<=WORLD_HEIGHT;y+=32) this.debugGraphics.lineBetween(0,y,WORLD_WIDTH,y);
+      this.debugGraphics.fillStyle(0xe07867,0.25);
+      for(let y=0;y<this.grid.rows;y++) for(let x=0;x<this.grid.columns;x++) if(!this.grid.isWalkable({x,y})) this.debugGraphics.fillRect(x*32,y*32,32,32);
+    }
+    this.redrawRoute();
+  }
+
+  private redrawRoute(): void {
+    this.routeGraphics.clear();
+    if(!this.debug.visible) return;
+    const points=[this.movement.position, ...(this.movement.destination ? [this.movement.destination] : []), ...this.waypoints];
+    if(points.length<2) return;
+    this.routeGraphics.lineStyle(3,0xe8c68c,0.8);
+    this.routeGraphics.beginPath();this.routeGraphics.moveTo(points[0].x,points[0].y);
+    for(const p of points.slice(1)) this.routeGraphics.lineTo(p.x,p.y);
+    this.routeGraphics.strokePath();
+  }
 
   private setZoom(value: number): void {
     this.zoom = Phaser.Math.Clamp(Math.round(value * 10) / 10, 0.7, 1.7);
@@ -112,10 +159,14 @@ export class DungeonScene extends Phaser.Scene {
     if (!this.movement.destination && this.waypoints.length) this.movement.moveTo(this.waypoints.shift()!);
     const { x, y } = this.movement.position;
     this.player.setPosition(x, y);
-    if (Math.hypot(x - oldX, y - oldY) > 0.01) {
-      this.player.setRotation(Math.atan2(y - oldY, x - oldX) + Math.PI / 2);
-    }
+    const state = this.animator.update(x - oldX, y - oldY, delta / 1000);
+    const angles = { north: 0, east: Math.PI / 2, south: Math.PI, west: -Math.PI / 2 };
+    this.player.setRotation(angles[state.facing]);
+    const gait = state.motion === 'walk' ? Math.sin(state.phase * Math.PI / 2) : 0;
+    this.cloak.setY(5 + gait * 3);
+    this.face.setY(-11 + Math.abs(gait) * 2);
+    if (this.debug.visible) this.redrawRoute();
     if (!this.movement.destination && !this.waypoints.length) this.marker.setVisible(false);
-    this.status.setText(`Tap/click to move · Wheel or +/- to zoom · Zoom ${this.zoom.toFixed(1)}x\nPosition: ${Math.round(x)}, ${Math.round(y)} · A* obstacle avoidance enabled · ${this.waypoints.length} queued waypoints`);
+    this.status.setText(`Tap/click to move · Wheel or +/- to zoom · Zoom ${this.zoom.toFixed(1)}x\nPosition: ${Math.round(x)}, ${Math.round(y)} · Facing: ${state.facing} · ${state.motion} · A* navigation`);
   }
 }
