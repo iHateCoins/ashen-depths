@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BootScene } from './game/scenes/BootScene';
+import { DungeonScene } from './game/scenes/DungeonScene';
 import './style.css';
 
 new Phaser.Game({
@@ -8,5 +8,5 @@ new Phaser.Game({
   backgroundColor: '#10171b',
   scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH, width: 960, height: 540 },
   render: { pixelArt: false, antialias: true },
-  scene: [BootScene],
+  scene: [DungeonScene],
 });
