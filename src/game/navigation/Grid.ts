@@ -36,12 +36,34 @@ export class NavigationGrid {
     return null;
   }
   isSegmentWalkable(from: Point, to: Point): boolean {
-    const distance = Math.hypot(to.x - from.x, to.y - from.y);
-    const steps = Math.max(1, Math.ceil(distance / (this.cellSize / 5)));
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      if (!this.isWalkable(this.cellAt({x: from.x + (to.x-from.x)*t, y: from.y + (to.y-from.y)*t}))) return false;
+    const start = this.cellAt(from);
+    const end = this.cellAt(to);
+    if (!this.isWalkable(start) || !this.isWalkable(end)) return false;
+    if (start.x === end.x && start.y === end.y) return true;
+
+    // Grid traversal visits every crossed cell, including both neighbors when
+    // crossing an exact grid corner. Sampling the line at intervals misses these.
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const stepX = Math.sign(dx), stepY = Math.sign(dy);
+    const tDeltaX = dx === 0 ? Infinity : this.cellSize / Math.abs(dx);
+    const tDeltaY = dy === 0 ? Infinity : this.cellSize / Math.abs(dy);
+    let tMaxX = dx === 0 ? Infinity : ((stepX > 0 ? (start.x + 1) * this.cellSize : start.x * this.cellSize) - from.x) / dx;
+    let tMaxY = dy === 0 ? Infinity : ((stepY > 0 ? (start.y + 1) * this.cellSize : start.y * this.cellSize) - from.y) / dy;
+    let x = start.x, y = start.y;
+    const maxSteps = this.columns + this.rows + 2;
+    for (let i = 0; i < maxSteps && (x !== end.x || y !== end.y); i++) {
+      if (Math.abs(tMaxX - tMaxY) < 1e-10) {
+        if (!this.isWalkable({x: x + stepX, y}) || !this.isWalkable({x, y: y + stepY})) return false;
+        x += stepX; y += stepY;
+        tMaxX += tDeltaX; tMaxY += tDeltaY;
+      } else if (tMaxX < tMaxY) {
+        x += stepX; tMaxX += tDeltaX;
+      } else {
+        y += stepY; tMaxY += tDeltaY;
+      }
+      if (!this.isWalkable({x, y})) return false;
     }
-    return true;
+    return x === end.x && y === end.y;
   }
 }
