@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
-import { MovementController } from '../movement/MovementController';
+import { MovementController, type Point } from '../movement/MovementController';
+import { NavigationGrid } from '../navigation/Grid';
+import { findPath } from '../navigation/Pathfinder';
 
 const WORLD_WIDTH = 2304;
 const WORLD_HEIGHT = 1536;
@@ -11,6 +13,9 @@ export class DungeonScene extends Phaser.Scene {
   private marker!: Phaser.GameObjects.Arc;
   private status!: Phaser.GameObjects.Text;
   private zoom = 1;
+  private grid!: NavigationGrid;
+  private waypoints: Point[] = [];
+  private obstacleGraphics!: Phaser.GameObjects.Graphics;
 
   constructor() { super('DungeonScene'); }
 
@@ -26,13 +31,26 @@ export class DungeonScene extends Phaser.Scene {
       }
     }
     graphics.lineStyle(8, 0x9b7b4b, 1).strokeRect(4, 4, WORLD_WIDTH - 8, WORLD_HEIGHT - 8);
+    this.grid = new NavigationGrid(WORLD_WIDTH, WORLD_HEIGHT, 32);
+    this.obstacleGraphics = this.add.graphics();
+    const block = (left: number, top: number, width: number, height: number): void => {
+      for (let y = Math.floor(top / 32); y <= Math.floor((top + height - 1) / 32); y++) {
+        for (let x = Math.floor(left / 32); x <= Math.floor((left + width - 1) / 32); x++) this.grid.setBlocked({x,y});
+      }
+      this.obstacleGraphics.fillStyle(0x536266, 1).fillRoundedRect(left, top, width, height, 5);
+      this.obstacleGraphics.lineStyle(3, 0x9ba7a0, 0.8).strokeRoundedRect(left, top, width, height, 5);
+    };
     for (let i = 0; i < 20; i++) {
       const x = 150 + (i % 5) * 420;
       const y = 130 + Math.floor(i / 5) * 380;
-      graphics.fillStyle(0x445255, 1).fillCircle(x, y, 20);
-      graphics.lineStyle(3, 0x758488, 1).strokeCircle(x, y, 20);
+      block(x - 32, y - 32, 64, 64);
     }
 
+    // Four longer dividers create corridors with multiple routes around them.
+    for (const y of [480, 1056]) {
+      block(300, y, 480, 32);
+      block(1056, y, 480, 32);
+    }
     this.movement = new MovementController({ x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 });
     const shadow = this.add.ellipse(0, 10, 34, 16, 0x000000, 0.45);
     const body = this.add.circle(0, 0, 17, 0x9cb2b6);
@@ -50,8 +68,17 @@ export class DungeonScene extends Phaser.Scene {
       const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
       const x = Phaser.Math.Clamp(point.x, 24, WORLD_WIDTH - 24);
       const y = Phaser.Math.Clamp(point.y, 24, WORLD_HEIGHT - 24);
-      this.movement.moveTo({ x, y });
-      this.marker.setPosition(x, y).setVisible(true);
+      const path = findPath(this.grid, this.movement.position, { x, y });
+      if (!path) {
+        this.waypoints = [];
+        this.movement.stop();
+        this.marker.setVisible(false);
+        return;
+      }
+      this.waypoints = path;
+      this.movement.moveTo(this.waypoints.shift()!);
+      const finalPoint = path.length ? path[path.length - 1] : this.movement.destination!;
+      this.marker.setPosition(finalPoint.x, finalPoint.y).setVisible(true);
     });
 
     this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _objects: Phaser.GameObjects.GameObject[], _dx: number, dy: number) => {
@@ -82,12 +109,13 @@ export class DungeonScene extends Phaser.Scene {
     const oldX = this.movement.position.x;
     const oldY = this.movement.position.y;
     this.movement.update(delta / 1000);
+    if (!this.movement.destination && this.waypoints.length) this.movement.moveTo(this.waypoints.shift()!);
     const { x, y } = this.movement.position;
     this.player.setPosition(x, y);
     if (Math.hypot(x - oldX, y - oldY) > 0.01) {
       this.player.setRotation(Math.atan2(y - oldY, x - oldX) + Math.PI / 2);
     }
-    if (!this.movement.destination) this.marker.setVisible(false);
-    this.status.setText(`Tap/click to move · Wheel or +/- to zoom · Zoom ${this.zoom.toFixed(1)}x\nPosition: ${Math.round(x)}, ${Math.round(y)} · No obstacle collision yet (PR03)`);
+    if (!this.movement.destination && !this.waypoints.length) this.marker.setVisible(false);
+    this.status.setText(`Tap/click to move · Wheel or +/- to zoom · Zoom ${this.zoom.toFixed(1)}x\nPosition: ${Math.round(x)}, ${Math.round(y)} · A* obstacle avoidance enabled · ${this.waypoints.length} queued waypoints`);
   }
 }
