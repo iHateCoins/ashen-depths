@@ -96,3 +96,20 @@ describe('reachable encounter spawning', () => {
     expect(planEncounterSpawns(grid, { x: 80, y: 80 }, ['wretch'], 1)).toEqual([]);
   });
 });
+
+describe('between-wave recovery', () => {
+  it('restores health only up to the maximum', async () => {
+    const { PlayerHealth } = await import('../src/game/combat/PlayerHealth');
+    const health = new PlayerHealth(100);
+    health.damage(30);
+    expect(health.heal(20)).toBe(20);
+    expect(health.hp).toBe(90);
+    expect(health.heal(20)).toBe(10);
+    expect(health.hp).toBe(100);
+    expect(health.heal(-1)).toBe(0);
+    expect(health.heal(Number.POSITIVE_INFINITY)).toBe(0);
+    health.damage(100);
+    expect(health.heal(20)).toBe(0);
+    expect(health.hp).toBe(0);
+  });
+});
