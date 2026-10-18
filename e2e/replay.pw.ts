@@ -33,7 +33,18 @@ test('victory New Expedition button receives an actual click/tap and restarts th
     () => document.documentElement.dataset.ashenEncounter
   ), { timeout: 10_000 }).toBe('complete');
 
-  // Tap the native on-screen control itself, not a simulated restart call.
+  // PR01 keeps the run playable after the Warden dies so the player can
+  // inspect/pick up its dropped treasure. Victory is finalized explicitly.
+  const finish = page.getByRole('button', { name: 'FINISH EXPEDITION' });
+  await expect(finish).toBeVisible();
+  if (test.info().project.name === 'desktop') {
+    await finish.click();
+  } else {
+    const bounds = await finish.boundingBox();
+    expect(bounds).not.toBeNull();
+    await page.touchscreen.tap(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
+  }
+  // Tap the native result-screen control, not a simulated restart call.
   const overlay = page.locator('#ashen-victory-overlay');
   await expect(overlay).toBeVisible();
   const button = overlay.getByRole('button', { name: 'NEW EXPEDITION' });
