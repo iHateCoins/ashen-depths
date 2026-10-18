@@ -86,3 +86,38 @@ test('fog and minimap record new rooms then clear progress on a fresh run', asyn
   expect(newRun.cacheDiscovered).toBe(false);
   expect(errors).toEqual([]);
 });
+
+test('the minimap catches taps instead of accidentally navigating the underlying dungeon', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto(gameUrl);
+  const canvas = page.locator('canvas');
+  await expect(canvas).toBeVisible({ timeout: 20000 });
+  const original = await page.evaluate(() => {
+    const runtime = window as Window & {
+      __ashenE2eGame?: { scene: { getScene: (key: string) => unknown } }
+    };
+    const scene = runtime.__ashenE2eGame!.scene.getScene('DungeonScene') as {
+      movement: { position: {x:number;y:number}; destination: {x:number;y:number} | null };
+    };
+    return { position: { ...scene.movement.position }, destination: scene.movement.destination };
+  });
+  const bounds = await canvas.boundingBox();
+  expect(bounds).not.toBeNull();
+  const mapX = bounds!.x + bounds!.width - 80;
+  const mapY = bounds!.y + 105;
+  if (test.info().project.name === 'desktop') await page.mouse.click(mapX,mapY);
+  else await page.touchscreen.tap(mapX,mapY);
+  await page.waitForTimeout(250);
+  const after = await page.evaluate(() => {
+    const runtime = window as Window & {
+      __ashenE2eGame?: { scene: { getScene: (key: string) => unknown } }
+    };
+    const scene = runtime.__ashenE2eGame!.scene.getScene('DungeonScene') as {
+      movement: { position: {x:number;y:number}; destination: {x:number;y:number} | null };
+    };
+    return { position: { ...scene.movement.position }, destination: scene.movement.destination };
+  });
+  expect(after).toEqual(original);
+  expect(errors).toEqual([]);
+});
