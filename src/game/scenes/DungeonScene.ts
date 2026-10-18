@@ -137,6 +137,8 @@ export class DungeonScene extends Phaser.Scene {
     this.debugButton = this.add.text(0, 8, 'DEBUG: OFF', {fontFamily:'Arial, sans-serif',fontSize:'14px',color:'#e3c99c',backgroundColor:'#243136',padding:{x:10,y:8}}).setScrollFactor(0).setDepth(110).setInteractive();
     this.debugButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); this.toggleDebug(); });
     this.refreshHud();
+    // Only clear the startup overlay after the dungeon actually initializes.
+    document.getElementById('boot-status')?.remove();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.refreshHud, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.scale.off(Phaser.Scale.Events.RESIZE, this.refreshHud, this));
   }
