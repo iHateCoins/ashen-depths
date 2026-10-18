@@ -103,7 +103,7 @@ export function updateEnemyAgents(
 
     if (enemy.phase === 'windup') {
       enemy.phaseRemaining = Math.max(0, enemy.phaseRemaining - step);
-      if (enemy.phaseRemaining > 0) continue;
+      if (enemy.phaseRemaining > 0.000001) continue;
 
       const center = enemy.attackTarget;
       if (center) {
