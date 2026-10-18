@@ -65,7 +65,8 @@ export class AutoSkillSystem {
     const casts: SkillCast[] = [];
 
     for (const skill of this.equipped) {
-      const remaining = Math.max(0, this.remaining(skill.id) - step);
+      const elapsed = Math.max(0, this.remaining(skill.id) - step);
+      const remaining = elapsed < 1e-8 ? 0 : elapsed;
       this.cooldowns.set(skill.id, remaining);
       if (remaining > 0) continue;
 
