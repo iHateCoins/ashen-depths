@@ -23,16 +23,16 @@ export class ResultOverlay {
 
     const title = document.createElement('h2');
     title.id = won ? 'ashen-victory-title' : 'ashen-defeat-title';
-    title.textContent = won ? 'TRIAL CLEARED' : 'YOU HAVE FALLEN';
+    title.textContent = won ? 'WARDEN DEFEATED' : 'YOU HAVE FALLEN';
     root.setAttribute('aria-labelledby', title.id);
 
     const description = document.createElement('p');
-    description.textContent = won ? 'Three waves survived' : 'Your expedition has ended';
+    description.textContent = won ? 'The deep chamber is conquered. Begin a new expedition.' : 'Your expedition has ended';
 
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'ashen-result-restart';
-    button.textContent = won ? 'REPLAY TRIAL' : 'RESTART EXPEDITION';
+    button.textContent = won ? 'NEW EXPEDITION' : 'RESTART EXPEDITION';
     button.addEventListener('click', event => {
       event.preventDefault();
       event.stopPropagation();
