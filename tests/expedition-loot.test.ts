@@ -77,6 +77,16 @@ describe('unsecured expedition bag', () => {
     expect(loot.bag).toHaveLength(1);
   });
 
+  it('does not allow picking up loot through dungeon walls', () => {
+    const loot = new ExpeditionLoot(5);
+    const drop = loot.dropForEnemy(1, 'brute', false, { x: 140, y: 120 })!;
+    const blocked = () => false;
+    expect(loot.nearby(player, blocked)).toBeNull();
+    expect(loot.pickUp(drop.id, player, blocked).status).toBe('too-far');
+    expect(loot.ground).toHaveLength(1);
+    expect(loot.pickUp(drop.id, player, () => true).status).toBe('picked-up');
+  });
+
   it('allows only 24 items and never consumes ground loot on a full bag', () => {
     const loot = new ExpeditionLoot(12);
     expect(loot.capacity).toBe(EXPEDITION_BAG_CAPACITY);
