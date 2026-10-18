@@ -19,7 +19,7 @@ npm run build
 
 ## Deployment
 
-`main` deploys through GitHub Actions to GitHub Pages once Pages is configured to use **GitHub Actions** in repository settings. Pull requests run CI but do not deploy to the public site.
+**Required:** In **Settings → Pages → Build and deployment**, set **Source** to **GitHub Actions**, not **Deploy from a branch**. The Pages/Jekyll branch publisher will otherwise publish raw TypeScript files, producing a blank page even if the separate game-build workflow succeeds.\n\n`main` deploys the compiled Vite `dist/` bundle through **Deploy GitHub Pages**. Pull requests run CI and a browser-launch test but do not deploy to the public site. See `docs/github-pages.md` for troubleshooting.
 
 ## Scope
 
