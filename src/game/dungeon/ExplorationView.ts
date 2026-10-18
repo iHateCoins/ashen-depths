@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { Point } from '../movement/MovementController';
 import type { DungeonLayout } from './DungeonGenerator';
 import type { ExplorationTracker } from './ExplorationTracker';
+import type { OptionalObjectiveDirector } from './OptionalObjectiveDirector';
 
 /** Presentation-only layer: the tracker owns all gameplay/exploration state. */
 export class ExplorationView {
@@ -19,6 +20,7 @@ export class ExplorationView {
     private readonly layout: DungeonLayout,
     private readonly exploration: ExplorationTracker,
     player: Point,
+    private readonly objectives?: OptionalObjectiveDirector,
   ) {
     this.lastPlayer = { ...player };
     // Overlay world geometry and monsters, never the player once standing on a
@@ -83,13 +85,17 @@ export class ExplorationView {
     // room. Undiscovered chambers and their types remain intentionally hidden.
     for (const room of this.layout.rooms) {
       if (!this.exploration.hasDiscovered(room.id)) continue;
-      const color = room.role === 'cache' ? 0xf0c676 :
+      const sideObjective = this.objectives?.objectives.find(item => item.roomId === room.id);
+      const claimed = sideObjective ? this.objectives?.hasClaimed(sideObjective.id) : false;
+      const color = claimed ? 0x648f86 :
+        sideObjective?.id === 'shrine' ? 0x9fe0ca :
+        room.role === 'cache' ? 0xf0c676 :
         room.role === 'depth' ? 0xe0a3b6 :
         room.role === 'entrance' ? 0x92d6b2 : 0xc4cbbd;
       this.map.fillStyle(color).fillCircle(
         left + (room.center.x + 0.5) * pixel,
         top + (room.center.y + 0.5) * pixel,
-        room.role === 'chamber' ? 2 : 3,
+        room.role === 'chamber' && !sideObjective ? 2 : 3,
       );
     }
     const x = Math.max(left + 1, Math.min(left + mapWidth - 1, left + player.x / this.layout.cellSize * pixel));

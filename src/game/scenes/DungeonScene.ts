@@ -13,6 +13,8 @@ import { ResultOverlay } from '../ui/ResultOverlay';
 import { createDungeonNavigationGrid, dungeonFloorAt, dungeonSeedFromSearch, generateDungeon, type DungeonLayout } from '../dungeon/DungeonGenerator';
 import { ExplorationTracker } from '../dungeon/ExplorationTracker';
 import { ExplorationView } from '../dungeon/ExplorationView';
+import { OptionalObjectiveDirector, type OptionalObjectiveKind } from '../dungeon/OptionalObjectiveDirector';
+import { OptionalObjectiveUI } from '../ui/OptionalObjectiveUI';
 
 const WORLD_WIDTH = 2304;
 const WORLD_HEIGHT = 1536;
@@ -47,6 +49,9 @@ export class DungeonScene extends Phaser.Scene {
   private enemyVisuals = new Map<number, Phaser.GameObjects.Container>();
   private attackWarnings!: Phaser.GameObjects.Graphics;
   private roomEncounters!: RoomEncounterDirector;
+  private optionalObjectives!: OptionalObjectiveDirector;
+  private optionalUi!: OptionalObjectiveUI;
+  private objectiveMarkers = new Map<OptionalObjectiveKind, Phaser.GameObjects.Text>();
   private objectiveLabel!: Phaser.GameObjects.Text;
   private victoryOverlay!: ResultOverlay;
   private kills = 0;
@@ -60,7 +65,9 @@ export class DungeonScene extends Phaser.Scene {
     );
     this.grid = createDungeonNavigationGrid(this.dungeon);
     this.roomEncounters = new RoomEncounterDirector(this.dungeon, this.grid);
+    this.optionalObjectives = new OptionalObjectiveDirector(this.dungeon, this.roomEncounters);
     this.renderDungeon();
+    this.renderOptionalMarkers();
     // Scenes restart without rebuilding the TypeScript object; reset every run.
     this.health.reset();
     this.combat = new AutoCombat();
@@ -87,7 +94,7 @@ export class DungeonScene extends Phaser.Scene {
     this.debugGraphics = this.add.graphics().setDepth(35).setVisible(false);
     this.routeGraphics = this.add.graphics().setDepth(34).setVisible(false);
     this.marker = this.add.circle(0, 0, 12, 0xd9b56c, 0.22).setStrokeStyle(2, 0xeacb85).setVisible(false).setDepth(26);
-    this.explorationView = new ExplorationView(this, this.dungeon, this.exploration, this.movement.position);
+    this.explorationView = new ExplorationView(this, this.dungeon, this.exploration, this.movement.position, this.optionalObjectives);
     this.cameras.main.setBounds(0, 0, this.grid.width, this.grid.height);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
     this.cameras.main.setZoom(this.zoom);
@@ -124,7 +131,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.add.text(14, 0, 'ASHEN DEPTHS · M03 / PR03', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.add.text(14, 0, 'ASHEN DEPTHS · M03 / PR04', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(32);
     this.dungeonSeedLabel = this.add.text(14, 0, `DUNGEON SEED: ${this.dungeon.seed}`, {
@@ -142,15 +149,18 @@ export class DungeonScene extends Phaser.Scene {
     }).setScrollFactor(0).setDepth(105);
     // These are actual DOM buttons above the canvas. Phaser's interactive
     // Container children can be offset by the scrolling/zooming camera.
+    this.optionalUi = new OptionalObjectiveUI(kind => this.activateOptionalObjective(kind));
     this.defeatOverlay = new ResultOverlay('defeat', () => this.scene.restart());
     this.victoryOverlay = new ResultOverlay('victory', () => this.scene.restart());
     const defeatOverlay = this.defeatOverlay;
     const victoryOverlay = this.victoryOverlay;
     const explorationView = this.explorationView;
+    const optionalUi = this.optionalUi;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       defeatOverlay.destroy();
       victoryOverlay.destroy();
       explorationView.destroy();
+      optionalUi.destroy();
     });
     this.debugButton = this.add.text(0, 8, 'DEBUG: OFF', {fontFamily:'Arial, sans-serif',fontSize:'14px',color:'#e3c99c',backgroundColor:'#243136',padding:{x:10,y:8}}).setScrollFactor(0).setDepth(110).setInteractive();
     this.debugButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); this.toggleDebug(); });
@@ -223,6 +233,58 @@ export class DungeonScene extends Phaser.Scene {
         }).setOrigin(0.5).setDepth(1);
       }
     }
+  }
+
+  private renderOptionalMarkers(): void {
+    this.objectiveMarkers.clear();
+    for (const objective of this.optionalObjectives.objectives) {
+      const cache = objective.id === 'cache';
+      const { x, y } = objective.position;
+      const outer = this.add.circle(x, y, cache ? 28 : 25,
+        cache ? 0xe1ad62 : 0x79c7ad, 0.18)
+        .setStrokeStyle(3, cache ? 0xedc789 : 0xa7e7ce, 0.9).setDepth(3);
+      // World markers remain below fog-of-war. Their visibility never spoils
+      // unseen chambers on the map or in the world.
+      const label = this.add.text(x, y + 38, cache ? 'SEALED · GUARDED' : 'SANCTUARY SHRINE', {
+        fontFamily: 'Arial, sans-serif', fontSize: '12px',
+        color: cache ? '#f5d4a0' : '#a9ead1',
+        stroke: '#101719', strokeThickness: 3,
+      }).setOrigin(0.5).setDepth(4);
+      outer.setData('objective-kind', objective.id);
+      this.objectiveMarkers.set(objective.id, label);
+    }
+  }
+
+  private activateOptionalObjective(kind: OptionalObjectiveKind): void {
+    if (this.health.defeated || this.roomEncounters.completed) return;
+    const reward = this.optionalObjectives.activate(
+      kind, this.movement.position, this.enemies, this.health.hp, this.health.maxHp,
+    );
+    if (!reward) return;
+    if (reward.kind === 'ember-edge') {
+      this.combat.bonusDamage = reward.damageBonus;
+      this.showCombatText(this.movement.position,
+        `EMBER EDGE · +${reward.damageBonus} DAMAGE`, '#f9cc8d');
+    } else {
+      const healed = this.health.heal(reward.healAmount);
+      this.healthLabel.setText(`HP: ${this.health.hp} / ${this.health.maxHp}`);
+      this.showCombatText(this.movement.position, `SANCTUARY · +${healed} HP`, '#b0ead2');
+    }
+    const label = this.objectiveMarkers.get(kind);
+    if (label) label.setText(kind === 'cache' ? 'CACHE OPENED' : 'SANCTUARY USED');
+    this.explorationView.refresh(this.movement.position);
+    this.refreshOptionalPrompt();
+    this.updateObjectiveStatus();
+  }
+
+  private refreshOptionalPrompt(): void {
+    if (this.health.defeated || this.roomEncounters.completed) {
+      this.optionalUi.hide();
+      return;
+    }
+    this.optionalUi.show(this.optionalObjectives.nearby(
+      this.movement.position, this.enemies, this.health.hp, this.health.maxHp,
+    ));
   }
 
   private refreshHud(): void {
@@ -322,11 +384,13 @@ export class DungeonScene extends Phaser.Scene {
     } else {
       objective = 'EXPLORE · FIND THE DEEP CHAMBER';
     }
-    this.objectiveLabel.setText(`${objective}\n${alive} enemies alive · ${localHostiles} from this room`);
+    this.objectiveLabel.setText(`${objective}\n${alive} enemies alive · ${localHostiles} from this room\nSide objectives ${this.optionalObjectives.claimedCount}/${this.optionalObjectives.totalCount} · Basic +${this.combat.bonusDamage}`);
     document.documentElement.dataset.ashenEncounter = this.roomEncounters.completed ? 'complete' : 'explore';
     document.documentElement.dataset.ashenGuardianAlive = String(guardianAlive);
     document.documentElement.dataset.ashenEnemyCount = String(alive);
     document.documentElement.dataset.ashenRoomHostiles = String(localHostiles);
+    document.documentElement.dataset.ashenOptionalObjectives = String(this.optionalObjectives.claimedCount);
+    document.documentElement.dataset.ashenBasicDamageBonus = String(this.combat.bonusDamage);
   }
 
   private renderAttackWarnings(): void {
@@ -434,12 +498,14 @@ export class DungeonScene extends Phaser.Scene {
     }
     this.healthLabel.setText(`HP: ${this.health.hp} / ${this.health.maxHp}`);
     if (!this.health.defeated && this.roomEncounters.update(this.movement.position, this.enemies)) {
+      this.optionalUi.hide();
       this.victoryOverlay.show();
       this.movement.stop();
       this.waypoints = [];
       this.marker.setVisible(false);
     }
     this.updateObjectiveStatus();
+    this.refreshOptionalPrompt();
     if(this.health.defeated) {
       this.movement.stop();this.waypoints=[];this.marker.setVisible(false);
       this.defeatOverlay.show();
