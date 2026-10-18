@@ -107,7 +107,7 @@ export class DungeonScene extends Phaser.Scene {
     this.cameras.main.setZoom(this.zoom);
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.health.defeated || this.roomEncounters.completed || this.lootUi.isOpen) return;
+      if (this.health.defeated || this.lootUi.isOpen) return;
       if (pointer.event instanceof MouseEvent && pointer.event.button !== 0) return;
       const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
       const x = Phaser.Math.Clamp(point.x, 24, this.grid.width - 24);
@@ -402,7 +402,7 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   private pickupGroundLoot(id: string): void {
-    if (this.health.defeated || this.roomEncounters.completed) return;
+    if (this.health.defeated) return;
     const result = this.loot.pickUp(id, this.movement.position);
     if (result.status !== 'picked-up') {
       if (result.status === 'full') {
@@ -418,14 +418,14 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   private discardBagItem(id: string): void {
-    if (this.health.defeated || this.roomEncounters.completed) return;
+    if (this.health.defeated) return;
     const drop = this.loot.discard(id, this.movement.position);
     if (drop) this.showGroundLoot(drop);
     this.refreshLootPrompt();
   }
 
   private refreshLootPrompt(): void {
-    if (this.health.defeated || this.roomEncounters.completed) return;
+    if (this.health.defeated) return;
     this.lootUi.refresh(this.loot.nearby(this.movement.position));
     document.documentElement.dataset.ashenBagCount = String(this.loot.bag.length);
     document.documentElement.dataset.ashenGroundCount = String(this.loot.ground.length);
@@ -499,7 +499,7 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    if(this.health.defeated || this.roomEncounters.completed || this.lootUi.isOpen) return;
+    if(this.health.defeated || this.lootUi.isOpen) return;
     const oldX = this.movement.position.x;
     const oldY = this.movement.position.y;
     this.movement.update(delta / 1000);
@@ -563,12 +563,16 @@ export class DungeonScene extends Phaser.Scene {
     }
     this.healthLabel.setText(`HP: ${this.health.hp} / ${this.health.maxHp}`);
     if (!this.health.defeated && this.roomEncounters.update(this.movement.position, this.enemies)) {
-      this.optionalUi.hide();
-      this.lootUi.hideForResult();
-      this.victoryOverlay.show();
-      this.movement.stop();
-      this.waypoints = [];
-      this.marker.setVisible(false);
+      // Winning is not the same as extracting. Let the player pick up Warden
+      // loot and inspect the bag before deliberately finishing the run.
+      this.showCombatText(this.movement.position, 'WARDEN DEFEATED', '#f5d7a4');
+      this.lootUi.enableFinish(() => {
+        this.optionalUi.hide();
+        this.victoryOverlay.show();
+        this.movement.stop();
+        this.waypoints = [];
+        this.marker.setVisible(false);
+      });
     }
     this.updateObjectiveStatus();
     this.refreshOptionalPrompt();
