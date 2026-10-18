@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 const gameUrl = 'http://127.0.0.1:4173/ashen-depths/';
 
-test('victory Replay Trial button receives an actual click/tap and restarts the encounter', async ({ page }) => {
+test('victory New Expedition button receives an actual click/tap and restarts the dungeon', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   const response = await page.goto(gameUrl);
@@ -17,13 +17,16 @@ test('victory Replay Trial button receives an actual click/tap and restarts the 
       scene: { getScene: (key: string) => unknown };
     } };
     const scene = runtime.__ashenE2eGame?.scene.getScene('DungeonScene') as {
-      encounters: { phase: string; wave: number };
-      enemies: { hp: number }[];
+      roomEncounters: { guardianId: number; hasEnteredDepth: boolean };
+      enemies: { id: number; hp: number }[];
     } | undefined;
     if (!scene) throw new Error('Local E2E Phaser scene is missing');
-    scene.encounters.phase = 'combat';
-    scene.encounters.wave = 3;
-    for (const enemy of scene.enemies) enemy.hp = 0;
+    // Reproduce completion through the director's real condition: the deepest
+    // chamber must have been visited and its guardian defeated.
+    scene.roomEncounters.hasEnteredDepth = true;
+    const guardian = scene.enemies.find(enemy => enemy.id === scene.roomEncounters.guardianId);
+    if (!guardian) throw new Error('Missing deep-chamber guardian');
+    guardian.hp = 0;
   });
 
   await expect.poll(() => page.evaluate(
@@ -33,7 +36,7 @@ test('victory Replay Trial button receives an actual click/tap and restarts the 
   // Tap the native on-screen control itself, not a simulated restart call.
   const overlay = page.locator('#ashen-victory-overlay');
   await expect(overlay).toBeVisible();
-  const button = overlay.getByRole('button', { name: 'REPLAY TRIAL' });
+  const button = overlay.getByRole('button', { name: 'NEW EXPEDITION' });
   await expect(button).toBeVisible();
   if (test.info().project.name === 'desktop') {
     await button.click();
@@ -43,18 +46,18 @@ test('victory Replay Trial button receives an actual click/tap and restarts the 
     await page.touchscreen.tap(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
   }
 
-  // Scene restart makes the trial's state countdown/wave 0; wave 1 begins later.
+  // A new expedition regenerates the population and returns to exploration.
   await expect.poll(() => page.evaluate(
     () => document.documentElement.dataset.ashenEncounter
-  ), { timeout: 5_000 }).toBe('countdown');
+  ), { timeout: 5_000 }).toBe('explore');
   await expect.poll(() => page.evaluate(
-    () => document.documentElement.dataset.ashenWave
-  ), { timeout: 5_000 }).toBe('0');
+    () => document.documentElement.dataset.ashenGuardianAlive
+  ), { timeout: 5_000 }).toBe('true');
   await expect(canvas).toBeVisible();
   expect(errors).toEqual([]);
 });
 
-test('defeat Restart Expedition button also receives pointer events after scrolling', async ({ page }) => {
+test('defeat Restart Expedition button remains touch accessible after exploration', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(gameUrl);
@@ -89,7 +92,7 @@ test('defeat Restart Expedition button also receives pointer events after scroll
 
   await expect.poll(() => page.evaluate(
     () => document.documentElement.dataset.ashenEncounter
-  ), { timeout: 5_000 }).toBe('countdown');
+  ), { timeout: 5_000 }).toBe('explore');
   await expect(canvas).toBeVisible();
   expect(errors).toEqual([]);
 });

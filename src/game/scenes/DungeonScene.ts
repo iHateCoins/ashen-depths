@@ -8,8 +8,7 @@ import { AutoCombat } from '../combat/AutoCombat';
 import { AutoSkillSystem, CINDER_BURST } from '../combat/AutoSkillSystem';
 import { createEnemyAgent, ENEMY_ARCHETYPES, updateEnemyAgents, type EnemyAgent } from '../combat/EnemyAI';
 import { PlayerHealth } from '../combat/PlayerHealth';
-import { EncounterDirector, type EncounterEvent } from '../combat/EncounterDirector';
-import { planEncounterSpawns } from '../combat/SpawnPlanner';
+import { RoomEncounterDirector } from '../combat/RoomEncounterDirector';
 import { ResultOverlay } from '../ui/ResultOverlay';
 import { createDungeonNavigationGrid, dungeonFloorAt, dungeonSeedFromSearch, generateDungeon, type DungeonLayout } from '../dungeon/DungeonGenerator';
 import { ExplorationTracker } from '../dungeon/ExplorationTracker';
@@ -47,9 +46,8 @@ export class DungeonScene extends Phaser.Scene {
   private defeatOverlay!: ResultOverlay;
   private enemyVisuals = new Map<number, Phaser.GameObjects.Container>();
   private attackWarnings!: Phaser.GameObjects.Graphics;
-  private encounters = new EncounterDirector();
-  private nextEnemyId = 1;
-  private waveLabel!: Phaser.GameObjects.Text;
+  private roomEncounters!: RoomEncounterDirector;
+  private objectiveLabel!: Phaser.GameObjects.Text;
   private victoryOverlay!: ResultOverlay;
   private kills = 0;
 
@@ -61,6 +59,7 @@ export class DungeonScene extends Phaser.Scene {
       dungeonSeedFromSearch(window.location.search, () => Math.floor(Math.random() * 0x100000000)),
     );
     this.grid = createDungeonNavigationGrid(this.dungeon);
+    this.roomEncounters = new RoomEncounterDirector(this.dungeon, this.grid);
     this.renderDungeon();
     // Scenes restart without rebuilding the TypeScript object; reset every run.
     this.health.reset();
@@ -76,8 +75,7 @@ export class DungeonScene extends Phaser.Scene {
     this.movement = new MovementController(this.dungeon.entrance);
     this.exploration = new ExplorationTracker(this.dungeon, this.grid);
     this.exploration.update(this.movement.position);
-    this.encounters = new EncounterDirector();
-    this.nextEnemyId = 1;
+    // Room populations are immutable plans; enemy HP and location are run-scoped.
     const shadow = this.add.ellipse(0, 10, 34, 16, 0x000000, 0.45);
     const body = this.add.circle(0, 0, 17, 0x9cb2b6);
     this.cloak = this.add.triangle(0, 5, -13, 15, 0, -20, 13, 15, 0x526b72);
@@ -85,6 +83,7 @@ export class DungeonScene extends Phaser.Scene {
     this.player = this.add.container(this.movement.position.x, this.movement.position.y, [shadow, body, this.cloak, this.face]);
     this.player.setDepth(10);
     this.attackWarnings = this.add.graphics().setDepth(9);
+    this.spawnRoomEnemies();
     this.debugGraphics = this.add.graphics().setDepth(35).setVisible(false);
     this.routeGraphics = this.add.graphics().setDepth(34).setVisible(false);
     this.marker = this.add.circle(0, 0, 12, 0xd9b56c, 0.22).setStrokeStyle(2, 0xeacb85).setVisible(false).setDepth(26);
@@ -94,7 +93,7 @@ export class DungeonScene extends Phaser.Scene {
     this.cameras.main.setZoom(this.zoom);
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.health.defeated || this.encounters.completed) return;
+      if (this.health.defeated || this.roomEncounters.completed) return;
       if (pointer.event instanceof MouseEvent && pointer.event.button !== 0) return;
       const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
       const x = Phaser.Math.Clamp(point.x, 24, this.grid.width - 24);
@@ -125,7 +124,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.add.text(14, 0, 'ASHEN DEPTHS · M03 / PR02', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.add.text(14, 0, 'ASHEN DEPTHS · M03 / PR03', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(32);
     this.dungeonSeedLabel = this.add.text(14, 0, `DUNGEON SEED: ${this.dungeon.seed}`, {
@@ -133,7 +132,7 @@ export class DungeonScene extends Phaser.Scene {
       backgroundColor:'#10171bcc',padding:{x:10,y:6},
     }).setScrollFactor(0).setDepth(100);
     this.healthLabel = this.add.text(14, 90, 'HP: 100 / 100', {fontFamily:'Arial, sans-serif',fontSize:'19px',color:'#f5c0b0',backgroundColor:'#10171bcc',padding:{x:10,y:7}}).setScrollFactor(0).setDepth(105);
-    this.waveLabel = this.add.text(14, 126, 'WAVE 1 / 3 · starting', {
+    this.objectiveLabel = this.add.text(14, 126, 'GOAL: FIND THE DEEP CHAMBER', {
       fontFamily:'Arial, sans-serif',fontSize:'16px',color:'#f2d6a5',
       backgroundColor:'#10171bcc',padding:{x:10,y:7},
     }).setScrollFactor(0).setDepth(105);
@@ -274,61 +273,60 @@ export class DungeonScene extends Phaser.Scene {
     this.tweens.add({targets:number, y:number.y-38,alpha:0,duration:650,onComplete:()=>number.destroy()});
   }
 
-  private spawnWave(wave: number, kinds: readonly ('wretch' | 'brute')[]): void {
-    const planned = planEncounterSpawns(this.grid, this.movement.position, kinds, wave);
-    for (const spawn of planned) {
-      const hp = ENEMY_ARCHETYPES[spawn.kind].hp;
+  private spawnRoomEnemies(): void {
+    for (const spawn of this.roomEncounters.placements) {
       const enemy = createEnemyAgent({
-        id: this.nextEnemyId++, position: spawn.position, hp, maxHp: hp,
+        id: spawn.id,
+        position: spawn.position,
+        hp: spawn.maxHp,
+        maxHp: spawn.maxHp,
       }, spawn.kind);
       this.enemies.push(enemy);
-      const brute = enemy.kind === 'brute';
-      const body = this.add.circle(0,0,brute ? 27 : 18,brute ? 0x75455e : 0xa44949)
-        .setStrokeStyle(3,brute ? 0xe7a4cf : 0xf1a49b);
-      const bar = this.add.rectangle(0,brute ? -40 : -29,brute ? 55 : 40,5,0x7eb88e).setOrigin(0.5);
-      const children: Phaser.GameObjects.GameObject[] = [body,bar];
-      if (brute) children.push(this.add.text(0,11,'BRUTE',{
-        fontFamily:'Arial, sans-serif',fontSize:'11px',color:'#ffe0ef',
-      }).setOrigin(0.5));
-      const visual = this.add.container(spawn.position.x,spawn.position.y,children).setDepth(8);
-      this.enemyVisuals.set(enemy.id,visual);
-      const arrival=this.add.circle(spawn.position.x,spawn.position.y,brute ? 44 : 31,
-        0xe0a36d,0.35).setStrokeStyle(2,0xf7d49d).setDepth(7);
-      this.tweens.add({targets:arrival,alpha:0,scale:1.2,duration:500,onComplete:()=>arrival.destroy()});
-    }
-    this.showCombatText(this.movement.position,`WAVE ${wave}`,'#f4cf9a');
-  }
 
-  private processEncounterEvents(events: EncounterEvent[]): void {
-    for (const event of events) {
-      if (event.type === 'wave-started') {
-        this.spawnWave(event.wave,event.kinds);
-        continue;
+      const isBrute = enemy.kind === 'brute';
+      const radius = spawn.guardian ? 32 : isBrute ? 27 : 18;
+      const color = spawn.guardian ? 0x8c4d6b : isBrute ? 0x75455e : 0xa44949;
+      const outline = spawn.guardian ? 0xffc5dc : isBrute ? 0xe7a4cf : 0xf1a49b;
+      const body = this.add.circle(0, 0, radius, color).setStrokeStyle(3, outline);
+      const bar = this.add.rectangle(0, -radius - 13, spawn.guardian ? 70 : isBrute ? 55 : 40,
+        5, 0x7eb88e).setOrigin(0.5);
+      const children: Phaser.GameObjects.GameObject[] = [body, bar];
+      if (spawn.guardian || isBrute) {
+        children.push(this.add.text(0, radius > 25 ? 10 : 6,
+          spawn.guardian ? 'WARDEN' : 'BRUTE', {
+            fontFamily: 'Arial, sans-serif',
+            fontSize: spawn.guardian ? '12px' : '11px',
+            color: spawn.guardian ? '#fff0b9' : '#ffe0ef',
+          }).setOrigin(0.5));
       }
-      if (event.final) {
-        this.victoryOverlay.show();
-        this.movement.stop();
-        this.waypoints = [];
-        this.marker.setVisible(false);
-        continue;
+      if (spawn.guardian) {
+        // Keep HP bar as child index 1 (the existing health-sync contract).
+        children.push(this.add.circle(0, 0, 43, 0xf0be88, 0.10)
+          .setStrokeStyle(2, 0xf0be88, 0.6));
       }
-      const healed = this.health.heal(20);
-      this.showCombatText(this.movement.position,
-        healed > 0 ? `WAVE CLEARED  +${healed} HP` : 'WAVE CLEARED','#b0e2ca');
+      const container = this.add.container(spawn.position.x, spawn.position.y, children).setDepth(8);
+      this.enemyVisuals.set(enemy.id, container);
     }
   }
 
-  private updateWaveStatus(): void {
-    if (this.encounters.completed) {
-      this.waveLabel.setText('TRIAL COMPLETE · 3 / 3');
-    } else if (this.encounters.phase === 'countdown') {
-      this.waveLabel.setText(`WAVE ${this.encounters.wave + 1} / ${this.encounters.totalWaves} · ${this.encounters.timeRemaining.toFixed(1)}s`);
+  private updateObjectiveStatus(): void {
+    const room = this.exploration.currentRoom(this.movement.position);
+    const guardianAlive = this.roomEncounters.guardianAlive(this.enemies);
+    const localHostiles = this.roomEncounters.roomHostiles(room, this.enemies);
+    const alive = this.enemies.filter(enemy => enemy.hp > 0).length;
+    let objective: string;
+    if (this.roomEncounters.completed) {
+      objective = 'DEPTH CLEARED · WARDEN DEFEATED';
+    } else if (this.roomEncounters.hasEnteredDepth) {
+      objective = guardianAlive ? 'DEEP CHAMBER · DEFEAT THE WARDEN' : 'DEEP CHAMBER · WARDEN FALLEN';
     } else {
-      const alive = this.enemies.filter(enemy => enemy.hp > 0).length;
-      this.waveLabel.setText(`WAVE ${this.encounters.wave} / ${this.encounters.totalWaves} · ${alive} enemies remaining`);
+      objective = 'EXPLORE · FIND THE DEEP CHAMBER';
     }
-    document.documentElement.dataset.ashenWave = String(this.encounters.wave);
-    document.documentElement.dataset.ashenEncounter = this.encounters.phase;
+    this.objectiveLabel.setText(`${objective}\n${alive} enemies alive · ${localHostiles} from this room`);
+    document.documentElement.dataset.ashenEncounter = this.roomEncounters.completed ? 'complete' : 'explore';
+    document.documentElement.dataset.ashenGuardianAlive = String(guardianAlive);
+    document.documentElement.dataset.ashenEnemyCount = String(alive);
+    document.documentElement.dataset.ashenRoomHostiles = String(localHostiles);
   }
 
   private renderAttackWarnings(): void {
@@ -372,7 +370,7 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    if(this.health.defeated || this.encounters.completed) return;
+    if(this.health.defeated || this.roomEncounters.completed) return;
     const oldX = this.movement.position.x;
     const oldY = this.movement.position.y;
     this.movement.update(delta / 1000);
@@ -435,18 +433,19 @@ export class DungeonScene extends Phaser.Scene {
       if(visual) visual.setPosition(enemy.position.x,enemy.position.y);
     }
     this.healthLabel.setText(`HP: ${this.health.hp} / ${this.health.maxHp}`);
-    if (!this.health.defeated) {
-      this.processEncounterEvents(this.encounters.update(
-        delta / 1000, this.enemies.filter(enemy => enemy.hp > 0).length,
-      ));
-      this.updateWaveStatus();
+    if (!this.health.defeated && this.roomEncounters.update(this.movement.position, this.enemies)) {
+      this.victoryOverlay.show();
+      this.movement.stop();
+      this.waypoints = [];
+      this.marker.setVisible(false);
     }
+    this.updateObjectiveStatus();
     if(this.health.defeated) {
       this.movement.stop();this.waypoints=[];this.marker.setVisible(false);
       this.defeatOverlay.show();
     }
     if (this.debug.visible) this.redrawRoute();
     if (!this.movement.destination && !this.waypoints.length) this.marker.setVisible(false);
-    this.status.setText(`Tap/click to move · Wheel or +/- to zoom · Zoom ${this.zoom.toFixed(1)}x\nPosition: ${Math.round(x)}, ${Math.round(y)} · ${state.motion} · Kills: ${this.kills} · Rooms ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} · Seed: ${this.dungeon.seed}`);
+    this.status.setText(`Tap/click to explore · Wheel or +/- to zoom · Zoom ${this.zoom.toFixed(1)}x\nPosition: ${Math.round(x)}, ${Math.round(y)} · ${state.motion} · Kills: ${this.kills} · Rooms ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} · Seed: ${this.dungeon.seed}`);
   }
 }
