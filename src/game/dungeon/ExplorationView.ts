@@ -8,6 +8,7 @@ export class ExplorationView {
   private readonly fog: Phaser.GameObjects.Graphics;
   private readonly map: Phaser.GameObjects.Graphics;
   private readonly heading: Phaser.GameObjects.Text;
+  private readonly mapHitArea: Phaser.GameObjects.Zone;
   private readonly tilePixels = 2;
   private readonly mapY = 62;
   private readonly onResize = (): void => this.redrawMap(this.lastPlayer);
@@ -31,6 +32,11 @@ export class ExplorationView {
       backgroundColor: '#10171bdd',
       padding: { x: 4, y: 3 },
     }).setScrollFactor(0).setDepth(116);
+    // Prevent tapping the minimap from inadvertently moving in the game world.
+    this.mapHitArea = scene.add.zone(0, 0, layout.columns * this.tilePixels + 10,
+      layout.rows * this.tilePixels + 10).setScrollFactor(0).setDepth(117).setInteractive();
+    this.mapHitArea.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: number,
+      _localY: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
     scene.scale.on(Phaser.Scale.Events.RESIZE, this.onResize);
     this.refresh(player);
   }
@@ -60,6 +66,7 @@ export class ExplorationView {
     const mapHeight = this.layout.rows * pixel;
     const left = Math.max(8, this.scene.scale.width - mapWidth - 12);
     const top = this.mapY;
+    this.mapHitArea.setPosition(left + mapWidth / 2, top + mapHeight / 2);
     this.map.clear()
       .fillStyle(0x080e11, 0.92).fillRoundedRect(left - 5, top - 5, mapWidth + 10, mapHeight + 10, 5)
       .lineStyle(1, 0x927a5b, 0.7).strokeRoundedRect(left - 5, top - 5, mapWidth + 10, mapHeight + 10, 5);
@@ -99,5 +106,6 @@ export class ExplorationView {
     this.fog.destroy();
     this.map.destroy();
     this.heading.destroy();
+    this.mapHitArea.destroy();
   }
 }
