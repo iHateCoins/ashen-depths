@@ -405,7 +405,8 @@ export class DungeonScene extends Phaser.Scene {
 
   private pickupGroundLoot(id: string): void {
     if (this.health.defeated) return;
-    const result = this.loot.pickUp(id, this.movement.position);
+    const result = this.loot.pickUp(id, this.movement.position,
+      (from, to) => this.grid.isSegmentWalkable(from, to));
     if (result.status !== 'picked-up') {
       if (result.status === 'full') {
         this.showCombatText(this.movement.position, 'BAG FULL', '#ffaf8a');
@@ -428,7 +429,8 @@ export class DungeonScene extends Phaser.Scene {
 
   private refreshLootPrompt(): void {
     if (this.health.defeated) return;
-    this.lootUi.refresh(this.loot.nearby(this.movement.position));
+    this.lootUi.refresh(this.loot.nearby(this.movement.position,
+      (from, to) => this.grid.isSegmentWalkable(from, to)));
     document.documentElement.dataset.ashenBagCount = String(this.loot.bag.length);
     document.documentElement.dataset.ashenGroundCount = String(this.loot.ground.length);
   }
