@@ -3,6 +3,7 @@ export interface Enemy { id: number; position: Point; hp: number; maxHp: number 
 export interface Attack { targetId: number; damage: number }
 export class AutoCombat {
   cooldown = 0;
+  bonusDamage = 0;
   readonly range: number;
   readonly damage: number;
   readonly interval: number;
@@ -20,8 +21,9 @@ export class AutoCombat {
         return da-db || a.id-b.id;
       })[0];
     if (!target) return [];
-    target.hp = Math.max(0,target.hp-this.damage);
+    const totalDamage = this.damage + this.bonusDamage;
+    target.hp = Math.max(0,target.hp-totalDamage);
     this.cooldown = this.interval;
-    return [{targetId:target.id,damage:this.damage}];
+    return [{targetId:target.id,damage:totalDamage}];
   }
 }
