@@ -52,3 +52,41 @@ test('victory Replay Trial button receives an actual click/tap and restarts the 
   await expect(canvas).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('defeat Restart Expedition button also receives pointer events after scrolling', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto(gameUrl);
+  const canvas = page.locator('canvas');
+  await expect(canvas).toBeVisible({ timeout: 20_000 });
+
+  await page.evaluate(() => {
+    const runtime = window as Window & { __ashenE2eGame?: {
+      scene: { getScene: (key: string) => unknown };
+    } };
+    const scene = runtime.__ashenE2eGame?.scene.getScene('DungeonScene') as {
+      health: { hp: number; defeated: boolean };
+      defeatOverlay: { setVisible: (value: boolean) => void };
+    } | undefined;
+    if (!scene) throw new Error('Local E2E scene is missing');
+    scene.health.hp = 0;
+    scene.health.defeated = true;
+    scene.defeatOverlay.setVisible(true);
+  });
+
+  const bounds = await canvas.boundingBox();
+  expect(bounds).not.toBeNull();
+  const x = bounds!.x + bounds!.width / 2;
+  const y = bounds!.y + bounds!.height / 2 + 32;
+  if (test.info().project.name === 'desktop') {
+    await page.mouse.click(x, y);
+  } else {
+    await page.touchscreen.tap(x, y);
+  }
+
+  await expect.poll(() => page.evaluate(
+    () => document.documentElement.dataset.ashenEncounter
+  ), { timeout: 5_000 }).toBe('countdown');
+  await expect(canvas).toBeVisible();
+  expect(errors).toEqual([]);
+});
