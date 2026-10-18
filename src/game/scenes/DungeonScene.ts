@@ -8,6 +8,8 @@ import { AutoCombat } from '../combat/AutoCombat';
 import { AutoSkillSystem, CINDER_BURST } from '../combat/AutoSkillSystem';
 import { createEnemyAgent, ENEMY_ARCHETYPES, updateEnemyAgents, type EnemyAgent } from '../combat/EnemyAI';
 import { PlayerHealth } from '../combat/PlayerHealth';
+import { EncounterDirector, type EncounterEvent } from '../combat/EncounterDirector';
+import { planEncounterSpawns } from '../combat/SpawnPlanner';
 
 const WORLD_WIDTH = 2304;
 const WORLD_HEIGHT = 1536;
@@ -38,6 +40,10 @@ export class DungeonScene extends Phaser.Scene {
   private defeatOverlay!: Phaser.GameObjects.Container;
   private enemyVisuals = new Map<number, Phaser.GameObjects.Container>();
   private attackWarnings!: Phaser.GameObjects.Graphics;
+  private encounters = new EncounterDirector();
+  private nextEnemyId = 1;
+  private waveLabel!: Phaser.GameObjects.Text;
+  private victoryOverlay!: Phaser.GameObjects.Container;
   private kills = 0;
 
   constructor() { super('DungeonScene'); }
@@ -86,26 +92,8 @@ export class DungeonScene extends Phaser.Scene {
     this.debug = createDebugOptions();
     this.zoom = 1;
     this.movement = new MovementController({ x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 });
-    const practicePositions = [
-      {x:900,y:740},{x:1280,y:740},{x:1160,y:940},
-      {x:980,y:1030},{x:1420,y:850},{x:800,y:900},
-      {x:1540,y:760},{x:1680,y:850},
-    ];
-    for (const [index, position] of practicePositions.entries()) {
-      if (!this.grid.isWalkable(this.grid.cellAt(position))) continue;
-      const kind = index >= 6 ? 'brute' : 'wretch';
-      const hp = ENEMY_ARCHETYPES[kind].hp;
-      const enemy = createEnemyAgent({ id: index+1, position, hp, maxHp: hp }, kind);
-      this.enemies.push(enemy);
-      const brute = kind === 'brute';
-      const shape = this.add.circle(0,0,brute ? 27 : 18,brute ? 0x75455e : 0xa44949)
-        .setStrokeStyle(3,brute ? 0xe7a4cf : 0xf1a49b);
-      const bar = this.add.rectangle(0,brute ? -40 : -29,brute ? 55 : 40,5,0x7eb88e).setOrigin(0.5);
-      const children: Phaser.GameObjects.GameObject[] = [shape,bar];
-      if (brute) children.push(this.add.text(0,11,'BRUTE',{fontFamily:'Arial, sans-serif',fontSize:'11px',color:'#ffe0ef'}).setOrigin(0.5));
-      const container = this.add.container(position.x,position.y,children).setDepth(8);
-      this.enemyVisuals.set(enemy.id,container);
-    }
+    this.encounters = new EncounterDirector();
+    this.nextEnemyId = 1;
     const shadow = this.add.ellipse(0, 10, 34, 16, 0x000000, 0.45);
     const body = this.add.circle(0, 0, 17, 0x9cb2b6);
     this.cloak = this.add.triangle(0, 5, -13, 15, 0, -20, 13, 15, 0x526b72);
@@ -121,6 +109,7 @@ export class DungeonScene extends Phaser.Scene {
     this.cameras.main.setZoom(this.zoom);
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (this.health.defeated || this.encounters.completed) return;
       if (pointer.event instanceof MouseEvent && pointer.event.button !== 0) return;
       const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
       const x = Phaser.Math.Clamp(point.x, 24, WORLD_WIDTH - 24);
@@ -151,10 +140,14 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.add.text(14, 0, 'ASHEN DEPTHS · M02 / PR04', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.add.text(14, 0, 'ASHEN DEPTHS · M02 / PR05', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(32);
     this.healthLabel = this.add.text(14, 90, 'HP: 100 / 100', {fontFamily:'Arial, sans-serif',fontSize:'19px',color:'#f5c0b0',backgroundColor:'#10171bcc',padding:{x:10,y:7}}).setScrollFactor(0).setDepth(105);
+    this.waveLabel = this.add.text(14, 126, 'WAVE 1 / 3 · starting', {
+      fontFamily:'Arial, sans-serif',fontSize:'16px',color:'#f2d6a5',
+      backgroundColor:'#10171bcc',padding:{x:10,y:7},
+    }).setScrollFactor(0).setDepth(105);
     this.skillStatusLabel = this.add.text(14, 0, 'CINDER BURST: READY', {
       fontFamily:'Arial, sans-serif',fontSize:'15px',color:'#ffbe83',
       backgroundColor:'#10171bcc',padding:{x:10,y:7}
@@ -164,6 +157,22 @@ export class DungeonScene extends Phaser.Scene {
     const restart=this.add.text(0,32,'RESTART EXPEDITION',{fontFamily:'Arial, sans-serif',fontSize:'19px',color:'#ffffff',backgroundColor:'#42565b',padding:{x:18,y:12}}).setOrigin(0.5).setInteractive();
     restart.on('pointerdown',(_pointer:Phaser.Input.Pointer,_lx:number,_ly:number,event:Phaser.Types.Input.EventData)=>{event.stopPropagation();this.scene.restart();});
     this.defeatOverlay=this.add.container(0,0,[shade,message,restart]).setScrollFactor(0).setDepth(200).setVisible(false);
+    const victoryShade=this.add.rectangle(0,0,960,540,0x0b1517,0.84).setOrigin(0).setInteractive();
+    const victoryTitle=this.add.text(0,0,'TRIAL CLEARED',{
+      fontFamily:'Georgia, serif',fontSize:'34px',color:'#e3c99c',
+    }).setOrigin(0.5);
+    const victoryText=this.add.text(0,0,'Three waves survived',{
+      fontFamily:'Arial, sans-serif',fontSize:'17px',color:'#c0d7ce',
+    }).setOrigin(0.5);
+    const victoryRestart=this.add.text(0,0,'REPLAY TRIAL',{
+      fontFamily:'Arial, sans-serif',fontSize:'19px',color:'#ffffff',
+      backgroundColor:'#42565b',padding:{x:18,y:12},
+    }).setOrigin(0.5).setInteractive();
+    victoryRestart.on('pointerdown',(_pointer:Phaser.Input.Pointer,_lx:number,_ly:number,event:Phaser.Types.Input.EventData)=>{
+      event.stopPropagation();this.scene.restart();
+    });
+    this.victoryOverlay=this.add.container(0,0,[victoryShade,victoryTitle,victoryText,victoryRestart])
+      .setScrollFactor(0).setDepth(200).setVisible(false);
     this.debugButton = this.add.text(0, 8, 'DEBUG: OFF', {fontFamily:'Arial, sans-serif',fontSize:'14px',color:'#e3c99c',backgroundColor:'#243136',padding:{x:10,y:8}}).setScrollFactor(0).setDepth(110).setInteractive();
     this.debugButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); this.toggleDebug(); });
     this.refreshHud();
@@ -182,6 +191,12 @@ export class DungeonScene extends Phaser.Scene {
       shade.setSize(this.scale.width,this.scale.height);
       (this.defeatOverlay.list[1] as Phaser.GameObjects.Text).setPosition(this.scale.width/2,this.scale.height/2-35);
       (this.defeatOverlay.list[2] as Phaser.GameObjects.Text).setPosition(this.scale.width/2,this.scale.height/2+32);
+    }
+    if(this.victoryOverlay) {
+      (this.victoryOverlay.list[0] as Phaser.GameObjects.Rectangle).setSize(this.scale.width,this.scale.height);
+      (this.victoryOverlay.list[1] as Phaser.GameObjects.Text).setPosition(this.scale.width/2,this.scale.height/2-65);
+      (this.victoryOverlay.list[2] as Phaser.GameObjects.Text).setPosition(this.scale.width/2,this.scale.height/2-12);
+      (this.victoryOverlay.list[3] as Phaser.GameObjects.Text).setPosition(this.scale.width/2,this.scale.height/2+50);
     }
   }
 
@@ -225,6 +240,63 @@ export class DungeonScene extends Phaser.Scene {
     this.tweens.add({targets:number, y:number.y-38,alpha:0,duration:650,onComplete:()=>number.destroy()});
   }
 
+  private spawnWave(wave: number, kinds: readonly ('wretch' | 'brute')[]): void {
+    const planned = planEncounterSpawns(this.grid, this.movement.position, kinds, wave);
+    for (const spawn of planned) {
+      const hp = ENEMY_ARCHETYPES[spawn.kind].hp;
+      const enemy = createEnemyAgent({
+        id: this.nextEnemyId++, position: spawn.position, hp, maxHp: hp,
+      }, spawn.kind);
+      this.enemies.push(enemy);
+      const brute = enemy.kind === 'brute';
+      const body = this.add.circle(0,0,brute ? 27 : 18,brute ? 0x75455e : 0xa44949)
+        .setStrokeStyle(3,brute ? 0xe7a4cf : 0xf1a49b);
+      const bar = this.add.rectangle(0,brute ? -40 : -29,brute ? 55 : 40,5,0x7eb88e).setOrigin(0.5);
+      const children: Phaser.GameObjects.GameObject[] = [body,bar];
+      if (brute) children.push(this.add.text(0,11,'BRUTE',{
+        fontFamily:'Arial, sans-serif',fontSize:'11px',color:'#ffe0ef',
+      }).setOrigin(0.5));
+      const visual = this.add.container(spawn.position.x,spawn.position.y,children).setDepth(8);
+      this.enemyVisuals.set(enemy.id,visual);
+      const arrival=this.add.circle(spawn.position.x,spawn.position.y,brute ? 44 : 31,
+        0xe0a36d,0.35).setStrokeStyle(2,0xf7d49d).setDepth(7);
+      this.tweens.add({targets:arrival,alpha:0,scale:1.2,duration:500,onComplete:()=>arrival.destroy()});
+    }
+    this.showCombatText(this.movement.position,`WAVE ${wave}`,'#f4cf9a');
+  }
+
+  private processEncounterEvents(events: EncounterEvent[]): void {
+    for (const event of events) {
+      if (event.type === 'wave-started') {
+        this.spawnWave(event.wave,event.kinds);
+        continue;
+      }
+      if (event.final) {
+        this.victoryOverlay.setVisible(true);
+        this.movement.stop();
+        this.waypoints = [];
+        this.marker.setVisible(false);
+        continue;
+      }
+      const healed = this.health.heal(20);
+      this.showCombatText(this.movement.position,
+        healed > 0 ? `WAVE CLEARED  +${healed} HP` : 'WAVE CLEARED','#b0e2ca');
+    }
+  }
+
+  private updateWaveStatus(): void {
+    if (this.encounters.completed) {
+      this.waveLabel.setText('TRIAL COMPLETE · 3 / 3');
+    } else if (this.encounters.phase === 'countdown') {
+      this.waveLabel.setText(`WAVE ${this.encounters.wave + 1} / ${this.encounters.totalWaves} · ${this.encounters.timeRemaining.toFixed(1)}s`);
+    } else {
+      const alive = this.enemies.filter(enemy => enemy.hp > 0).length;
+      this.waveLabel.setText(`WAVE ${this.encounters.wave} / ${this.encounters.totalWaves} · ${alive} enemies remaining`);
+    }
+    document.documentElement.dataset.ashenWave = String(this.encounters.wave);
+    document.documentElement.dataset.ashenEncounter = this.encounters.phase;
+  }
+
   private renderAttackWarnings(): void {
     this.attackWarnings.clear();
     for (const enemy of this.enemies) {
@@ -266,7 +338,7 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    if(this.health.defeated) return;
+    if(this.health.defeated || this.encounters.completed) return;
     const oldX = this.movement.position.x;
     const oldY = this.movement.position.y;
     this.movement.update(delta / 1000);
@@ -319,12 +391,18 @@ export class DungeonScene extends Phaser.Scene {
       if(visual) visual.setPosition(enemy.position.x,enemy.position.y);
     }
     this.healthLabel.setText(`HP: ${this.health.hp} / ${this.health.maxHp}`);
+    if (!this.health.defeated) {
+      this.processEncounterEvents(this.encounters.update(
+        delta / 1000, this.enemies.filter(enemy => enemy.hp > 0).length,
+      ));
+      this.updateWaveStatus();
+    }
     if(this.health.defeated) {
       this.movement.stop();this.waypoints=[];this.marker.setVisible(false);
       this.defeatOverlay.setVisible(true);
     }
     if (this.debug.visible) this.redrawRoute();
     if (!this.movement.destination && !this.waypoints.length) this.marker.setVisible(false);
-    this.status.setText(`Tap/click to move · Wheel or +/- to zoom · Zoom ${this.zoom.toFixed(1)}x\nPosition: ${Math.round(x)}, ${Math.round(y)} · Facing: ${state.facing} · ${state.motion} · Dodge warning circles · Kills: ${this.kills}`);
+    this.status.setText(`Tap/click to move · Wheel or +/- to zoom · Zoom ${this.zoom.toFixed(1)}x\nPosition: ${Math.round(x)}, ${Math.round(y)} · Facing: ${state.facing} · ${state.motion} · Trial kills: ${this.kills}`);
   }
 }
