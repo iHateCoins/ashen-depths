@@ -132,12 +132,12 @@ export class ExpeditionLoot {
     return dropped;
   }
 
-  nearby(player: Point): GroundLoot | null {
+  nearby(player: Point, canReach: (from: Point, to: Point) => boolean = () => true): GroundLoot | null {
     let closest: GroundLoot | null = null;
     let bestDistance = PICKUP_RADIUS;
     for (const drop of this.ground) {
       const distance = Math.hypot(player.x - drop.position.x, player.y - drop.position.y);
-      if (distance <= bestDistance) {
+      if (distance <= bestDistance && canReach(player, drop.position)) {
         bestDistance = distance;
         closest = drop;
       }
@@ -145,11 +145,12 @@ export class ExpeditionLoot {
     return closest;
   }
 
-  pickUp(id: string, player: Point): PickupResult {
+  pickUp(id: string, player: Point, canReach: (from: Point, to: Point) => boolean = () => true): PickupResult {
     const index = this.ground.findIndex(drop => drop.id === id);
     if (index < 0) return { status: 'not-found' };
     const drop = this.ground[index];
-    if (Math.hypot(drop.position.x - player.x, drop.position.y - player.y) > PICKUP_RADIUS) {
+    if (Math.hypot(drop.position.x - player.x, drop.position.y - player.y) > PICKUP_RADIUS ||
+        !canReach(player, drop.position)) {
       return { status: 'too-far' };
     }
     if (this.bagFull) return { status: 'full' };
