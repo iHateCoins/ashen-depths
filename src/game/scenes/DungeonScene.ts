@@ -10,6 +10,7 @@ import { createEnemyAgent, ENEMY_ARCHETYPES, updateEnemyAgents, type EnemyAgent 
 import { PlayerHealth } from '../combat/PlayerHealth';
 import { EncounterDirector, type EncounterEvent } from '../combat/EncounterDirector';
 import { planEncounterSpawns } from '../combat/SpawnPlanner';
+import { ResultOverlay } from '../ui/ResultOverlay';
 
 const WORLD_WIDTH = 2304;
 const WORLD_HEIGHT = 1536;
@@ -37,13 +38,13 @@ export class DungeonScene extends Phaser.Scene {
   private enemies: EnemyAgent[] = [];
   private health = new PlayerHealth();
   private healthLabel!: Phaser.GameObjects.Text;
-  private defeatOverlay!: Phaser.GameObjects.Container;
+  private defeatOverlay!: ResultOverlay;
   private enemyVisuals = new Map<number, Phaser.GameObjects.Container>();
   private attackWarnings!: Phaser.GameObjects.Graphics;
   private encounters = new EncounterDirector();
   private nextEnemyId = 1;
   private waveLabel!: Phaser.GameObjects.Text;
-  private victoryOverlay!: Phaser.GameObjects.Container;
+  private victoryOverlay!: ResultOverlay;
   private kills = 0;
 
   constructor() { super('DungeonScene'); }
@@ -152,27 +153,16 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily:'Arial, sans-serif',fontSize:'15px',color:'#ffbe83',
       backgroundColor:'#10171bcc',padding:{x:10,y:7}
     }).setScrollFactor(0).setDepth(105);
-    const shade=this.add.rectangle(0,0,960,540,0x090d10,0.82).setOrigin(0).setInteractive();
-    const message=this.add.text(0,-35,'YOU HAVE FALLEN',{fontFamily:'Georgia, serif',fontSize:'34px',color:'#e3c99c'}).setOrigin(0.5);
-    const restart=this.add.text(0,32,'RESTART EXPEDITION',{fontFamily:'Arial, sans-serif',fontSize:'19px',color:'#ffffff',backgroundColor:'#42565b',padding:{x:18,y:12}}).setOrigin(0.5).setInteractive();
-    restart.on('pointerdown',(_pointer:Phaser.Input.Pointer,_lx:number,_ly:number,event:Phaser.Types.Input.EventData)=>{event.stopPropagation();this.scene.restart();});
-    this.defeatOverlay=this.add.container(0,0,[shade,message,restart]).setScrollFactor(0).setDepth(200).setVisible(false);
-    const victoryShade=this.add.rectangle(0,0,960,540,0x0b1517,0.84).setOrigin(0).setInteractive();
-    const victoryTitle=this.add.text(0,0,'TRIAL CLEARED',{
-      fontFamily:'Georgia, serif',fontSize:'34px',color:'#e3c99c',
-    }).setOrigin(0.5);
-    const victoryText=this.add.text(0,0,'Three waves survived',{
-      fontFamily:'Arial, sans-serif',fontSize:'17px',color:'#c0d7ce',
-    }).setOrigin(0.5);
-    const victoryRestart=this.add.text(0,0,'REPLAY TRIAL',{
-      fontFamily:'Arial, sans-serif',fontSize:'19px',color:'#ffffff',
-      backgroundColor:'#42565b',padding:{x:18,y:12},
-    }).setOrigin(0.5).setInteractive();
-    victoryRestart.on('pointerdown',(_pointer:Phaser.Input.Pointer,_lx:number,_ly:number,event:Phaser.Types.Input.EventData)=>{
-      event.stopPropagation();this.scene.restart();
+    // These are actual DOM buttons above the canvas. Phaser's interactive
+    // Container children can be offset by the scrolling/zooming camera.
+    this.defeatOverlay = new ResultOverlay('defeat', () => this.scene.restart());
+    this.victoryOverlay = new ResultOverlay('victory', () => this.scene.restart());
+    const defeatOverlay = this.defeatOverlay;
+    const victoryOverlay = this.victoryOverlay;
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      defeatOverlay.destroy();
+      victoryOverlay.destroy();
     });
-    this.victoryOverlay=this.add.container(0,0,[victoryShade,victoryTitle,victoryText,victoryRestart])
-      .setScrollFactor(0).setDepth(200).setVisible(false);
     this.debugButton = this.add.text(0, 8, 'DEBUG: OFF', {fontFamily:'Arial, sans-serif',fontSize:'14px',color:'#e3c99c',backgroundColor:'#243136',padding:{x:10,y:8}}).setScrollFactor(0).setDepth(110).setInteractive();
     this.debugButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); this.toggleDebug(); });
     this.refreshHud();
@@ -186,18 +176,7 @@ export class DungeonScene extends Phaser.Scene {
     this.status.setWordWrapWidth(Math.max(240, this.scale.width - 28));
     this.debugButton?.setX(Math.max(8, this.scale.width - 130));
     this.skillStatusLabel?.setY(Math.max(152, this.scale.height - 46));
-    if(this.defeatOverlay) {
-      const shade=this.defeatOverlay.list[0] as Phaser.GameObjects.Rectangle;
-      shade.setSize(this.scale.width,this.scale.height);
-      (this.defeatOverlay.list[1] as Phaser.GameObjects.Text).setPosition(this.scale.width/2,this.scale.height/2-35);
-      (this.defeatOverlay.list[2] as Phaser.GameObjects.Text).setPosition(this.scale.width/2,this.scale.height/2+32);
-    }
-    if(this.victoryOverlay) {
-      (this.victoryOverlay.list[0] as Phaser.GameObjects.Rectangle).setSize(this.scale.width,this.scale.height);
-      (this.victoryOverlay.list[1] as Phaser.GameObjects.Text).setPosition(this.scale.width/2,this.scale.height/2-65);
-      (this.victoryOverlay.list[2] as Phaser.GameObjects.Text).setPosition(this.scale.width/2,this.scale.height/2-12);
-      (this.victoryOverlay.list[3] as Phaser.GameObjects.Text).setPosition(this.scale.width/2,this.scale.height/2+50);
-    }
+
   }
 
   private toggleDebug(): void {
@@ -272,7 +251,7 @@ export class DungeonScene extends Phaser.Scene {
         continue;
       }
       if (event.final) {
-        this.victoryOverlay.setVisible(true);
+        this.victoryOverlay.show();
         this.movement.stop();
         this.waypoints = [];
         this.marker.setVisible(false);
@@ -399,7 +378,7 @@ export class DungeonScene extends Phaser.Scene {
     }
     if(this.health.defeated) {
       this.movement.stop();this.waypoints=[];this.marker.setVisible(false);
-      this.defeatOverlay.setVisible(true);
+      this.defeatOverlay.show();
     }
     if (this.debug.visible) this.redrawRoute();
     if (!this.movement.destination && !this.waypoints.length) this.marker.setVisible(false);
