@@ -1,2 +1,42 @@
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/><meta name="theme-color" content="#10171b"/><title>Ashen Depths</title></head><body><div id="app"></div><script type="module" src="/src/main.ts"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#10171b" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Ashen Depths</title>
+  <!-- Inline styles are intentional: even a misconfigured Pages source must not display a white screen. -->
+  <style>
+    html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171b;color:#e3c99c}
+    #app{position:relative}
+    #boot-status{position:absolute;inset:0;z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;box-sizing:border-box;text-align:center;background:#10171b;font:16px/1.5 Arial,sans-serif}
+    #boot-status strong{font:36px Georgia,serif;letter-spacing:3px}
+    #boot-message{max-width:520px;white-space:pre-line;color:#c0cdcd}
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="boot-status" role="status" aria-live="polite">
+      <strong>ASHEN DEPTHS</strong>
+      <div id="boot-message">Loading the dungeon…</div>
+    </div>
+  </div>
+  <script>
+    (() => {
+      const showError = () => {
+        const message = document.getElementById('boot-message');
+        if (message) message.textContent =
+          'The game could not start.\nIf hosted on GitHub Pages, open repository Settings → Pages and select GitHub Actions as the build source. Then check the latest Deploy GitHub Pages workflow.';
+      };
+      window.addEventListener('error', showError);
+      window.addEventListener('unhandledrejection', showError);
+      setTimeout(() => {
+        if (document.getElementById('boot-status')) showError();
+      }, 9000);
+    })();
+  </script>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
