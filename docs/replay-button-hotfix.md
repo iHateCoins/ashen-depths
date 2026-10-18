@@ -1,29 +1,27 @@
 # Replay Trial / Restart Expedition pointer fix
 
-## Root cause
+## Reproduced regression
 
-In M02 PR05, both end-of-trial and defeat screens were attached to Phaser Containers with `setScrollFactor(0)`. The container rendered correctly as a fixed HUD overlay, but Phaser's `setScrollFactor` does not update its child objects unless its `updateChildren` argument is enabled.
+After clearing M02 PR05's three waves, the **REPLAY TRIAL** button was visible but did not restart the run. The new Playwright end-to-end test reproduced this on desktop Chromium, mobile Chromium, and WebKit by advancing the real scene to victory and tapping the visible screen position.
 
-The **REPLAY TRIAL** and **RESTART EXPEDITION** controls were interactive children, so their hit testing could be offset by the following dungeon camera despite appearing centered.
+The terminal screens used interactive children of Phaser Containers with `setScrollFactor(0)`. Their hit testing could be offset by the scrolling camera, even when the button appeared correctly positioned. Propagating the zero scroll factor to all children alone did **not** resolve the regression in browser tests.
 
 ## Correction
 
-Use `container.setScrollFactor(0, 0, true)` *after* the interactive child objects have been added. This applies screen-space coordinates to the container and its children. The underlying trial progression and automatic combat remain unchanged.
+Both the victory and defeat terminal panels are now **native DOM overlays** placed above Phaser's canvas with a screen-fixed layout and real accessible `<button>` elements. Native DOM hit areas do not depend on camera or zoom transforms. Restart actions still call the scene's existing `restart()` method.
+
+Overlays are created when a scene starts and removed on scene shutdown/restart to avoid orphaned buttons or duplicated handlers.
 
 ## Regression coverage
 
-- A local-host-only Phaser test handle drives the real scene to the third-wave victory state.
-- Playwright taps the actual game canvas over the **REPLAY TRIAL** label (desktop mouse and mobile touch), not a substitute HTML control.
-- It verifies that the encounter returns to wave 0 and `countdown` after the tap.
-- A second test exercises **RESTART EXPEDITION** on the defeat overlay.
-- The browser tests run on desktop Chromium, mobile Chromium, and WebKit.
-- Normal deployment does not expose the test-only game handle on GitHub Pages.
+- Local-host-only Phaser test handle drives the real running scene into victory; no debug controls are exposed on the public GitHub Pages hostname.
+- Playwright clicks/taps the actual **REPLAY TRIAL** button (desktop mouse, mobile Chromium, and iPhone-compatible WebKit).
+- The test verifies the encounter resets to wave 0 and the countdown begins again.
+- A second test exercises the **RESTART EXPEDITION** button on the defeat overlay.
+- Existing build, typecheck, update-version, and browser-launch checks still run.
 
-## Manual test after merge
+## Manual acceptance
 
-1. In the installed iPhone Home Screen app, finish the three-wave trial.
-2. Tap **REPLAY TRIAL** and confirm the player returns to the starting position, health resets to 100, and Wave 1 countdown begins.
-3. Repeat after moving the player around; verify the restart button is still tappable.
-4. Also test **RESTART EXPEDITION** after losing all HP.
-
-The automatic iOS web-app updater should deliver this fix after merging and successful Pages deployment.
+1. On the iPhone Home Screen app, finish all three waves and tap **REPLAY TRIAL**. Confirm health and wave progress reset and a fresh Wave 1 countdown begins.
+2. Let enemies defeat the player and try **RESTART EXPEDITION**.
+3. Confirm both panels remain centered in landscape and portrait and the iOS auto-updater continues to work.
