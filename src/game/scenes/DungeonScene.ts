@@ -11,6 +11,7 @@ import { PlayerHealth } from '../combat/PlayerHealth';
 import { EncounterDirector, type EncounterEvent } from '../combat/EncounterDirector';
 import { planEncounterSpawns } from '../combat/SpawnPlanner';
 import { ResultOverlay } from '../ui/ResultOverlay';
+import { createDungeonNavigationGrid, dungeonFloorAt, dungeonSeedFromSearch, generateDungeon, type DungeonLayout } from '../dungeon/DungeonGenerator';
 
 const WORLD_WIDTH = 2304;
 const WORLD_HEIGHT = 1536;
@@ -24,7 +25,8 @@ export class DungeonScene extends Phaser.Scene {
   private zoom = 1;
   private grid!: NavigationGrid;
   private waypoints: Point[] = [];
-  private obstacleGraphics!: Phaser.GameObjects.Graphics;
+  private dungeon!: DungeonLayout;
+  private dungeonSeedLabel!: Phaser.GameObjects.Text;
   private animator = new DirectionalAnimator();
   private debug: DebugOptions = createDebugOptions();
   private debugGraphics!: Phaser.GameObjects.Graphics;
@@ -51,36 +53,11 @@ export class DungeonScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setBackgroundColor('#10171b');
-    const graphics = this.add.graphics();
-    graphics.fillStyle(0x20282b, 1).fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
-    for (let y = 0; y < WORLD_HEIGHT; y += GRID) {
-      for (let x = 0; x < WORLD_WIDTH; x += GRID) {
-        const even = (x / GRID + y / GRID) % 2 === 0;
-        graphics.fillStyle(even ? 0x293235 : 0x252e31, 1).fillRect(x + 1, y + 1, GRID - 2, GRID - 2);
-        graphics.lineStyle(1, 0x344144, 0.35).strokeRect(x, y, GRID, GRID);
-      }
-    }
-    graphics.lineStyle(8, 0x9b7b4b, 1).strokeRect(4, 4, WORLD_WIDTH - 8, WORLD_HEIGHT - 8);
-    this.grid = new NavigationGrid(WORLD_WIDTH, WORLD_HEIGHT, 32);
-    this.obstacleGraphics = this.add.graphics();
-    const block = (left: number, top: number, width: number, height: number): void => {
-      for (let y = Math.floor(top / 32); y <= Math.floor((top + height - 1) / 32); y++) {
-        for (let x = Math.floor(left / 32); x <= Math.floor((left + width - 1) / 32); x++) this.grid.setBlocked({x,y});
-      }
-      this.obstacleGraphics.fillStyle(0x536266, 1).fillRoundedRect(left, top, width, height, 5);
-      this.obstacleGraphics.lineStyle(3, 0x9ba7a0, 0.8).strokeRoundedRect(left, top, width, height, 5);
-    };
-    for (let i = 0; i < 20; i++) {
-      const x = 150 + (i % 5) * 420;
-      const y = 130 + Math.floor(i / 5) * 380;
-      block(x - 32, y - 32, 64, 64);
-    }
-
-    // Four longer dividers create corridors with multiple routes around them.
-    for (const y of [480, 1056]) {
-      block(300, y, 480, 32);
-      block(1056, y, 480, 32);
-    }
+    this.dungeon = generateDungeon(
+      dungeonSeedFromSearch(window.location.search, () => Math.floor(Math.random() * 0x100000000)),
+    );
+    this.grid = createDungeonNavigationGrid(this.dungeon);
+    this.renderDungeon();
     // Scenes restart without rebuilding the TypeScript object; reset every run.
     this.health.reset();
     this.combat = new AutoCombat();
@@ -92,7 +69,7 @@ export class DungeonScene extends Phaser.Scene {
     this.animator = new DirectionalAnimator();
     this.debug = createDebugOptions();
     this.zoom = 1;
-    this.movement = new MovementController({ x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 });
+    this.movement = new MovementController(this.dungeon.entrance);
     this.encounters = new EncounterDirector();
     this.nextEnemyId = 1;
     const shadow = this.add.ellipse(0, 10, 34, 16, 0x000000, 0.45);
@@ -105,7 +82,7 @@ export class DungeonScene extends Phaser.Scene {
     this.debugGraphics = this.add.graphics().setDepth(20).setVisible(false);
     this.routeGraphics = this.add.graphics().setDepth(19).setVisible(false);
     this.marker = this.add.circle(0, 0, 12, 0xd9b56c, 0.22).setStrokeStyle(2, 0xeacb85).setVisible(false);
-    this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+    this.cameras.main.setBounds(0, 0, this.grid.width, this.grid.height);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
     this.cameras.main.setZoom(this.zoom);
 
@@ -113,8 +90,8 @@ export class DungeonScene extends Phaser.Scene {
       if (this.health.defeated || this.encounters.completed) return;
       if (pointer.event instanceof MouseEvent && pointer.event.button !== 0) return;
       const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-      const x = Phaser.Math.Clamp(point.x, 24, WORLD_WIDTH - 24);
-      const y = Phaser.Math.Clamp(point.y, 24, WORLD_HEIGHT - 24);
+      const x = Phaser.Math.Clamp(point.x, 24, this.grid.width - 24);
+      const y = Phaser.Math.Clamp(point.y, 24, this.grid.height - 24);
       const path = findPath(this.grid, this.movement.position, { x, y });
       if (!path) {
         this.waypoints = [];
@@ -141,9 +118,13 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.add.text(14, 0, 'ASHEN DEPTHS · M02 / PR05', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.add.text(14, 0, 'ASHEN DEPTHS · M03 / PR01', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(32);
+    this.dungeonSeedLabel = this.add.text(14, 0, `DUNGEON SEED: ${this.dungeon.seed}`, {
+      fontFamily:'Arial, sans-serif',fontSize:'12px',color:'#aab9b5',
+      backgroundColor:'#10171bcc',padding:{x:10,y:6},
+    }).setScrollFactor(0).setDepth(100);
     this.healthLabel = this.add.text(14, 90, 'HP: 100 / 100', {fontFamily:'Arial, sans-serif',fontSize:'19px',color:'#f5c0b0',backgroundColor:'#10171bcc',padding:{x:10,y:7}}).setScrollFactor(0).setDepth(105);
     this.waveLabel = this.add.text(14, 126, 'WAVE 1 / 3 · starting', {
       fontFamily:'Arial, sans-serif',fontSize:'16px',color:'#f2d6a5',
@@ -172,10 +153,75 @@ export class DungeonScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.scale.off(Phaser.Scale.Events.RESIZE, this.refreshHud, this));
   }
 
+  private renderDungeon(): void {
+    const layout = this.dungeon;
+    const graphics = this.add.graphics().setDepth(-20);
+    graphics.fillStyle(0x10171b, 1).fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+
+    const roleAt = (x: number, y: number): 'entrance' | 'cache' | 'depth' | 'chamber' | 'hall' => {
+      for (const room of layout.rooms) {
+        if (x >= room.x && x < room.x + room.width &&
+            y >= room.y && y < room.y + room.height) return room.role;
+      }
+      return 'hall';
+    };
+
+    // Every floor tile and its collision shape derive from the same generated
+    // layout. The world remains seamless: no per-room scene transitions.
+    for (let y = 0; y < layout.rows; y++) {
+      for (let x = 0; x < layout.columns; x++) {
+        if (!dungeonFloorAt(layout, {x,y})) continue;
+        const px = x * GRID / 2, py = y * GRID / 2;
+        const role = roleAt(x,y);
+        const even = (x + y) % 2 === 0;
+        const roomPalette = role === 'cache' ? [0x544a35,0x4b4333]
+          : role === 'depth' ? [0x44353d,0x3e343b]
+          : role === 'entrance' ? [0x34413e,0x303b39]
+          : role === 'hall' ? [0x272f32,0x252d30]
+          : [0x343b3b,0x303738];
+        graphics.fillStyle(roomPalette[even ? 0 : 1],1)
+          .fillRect(px,py,layout.cellSize,layout.cellSize);
+        graphics.lineStyle(1,0x101719,0.24)
+          .strokeRect(px + 1,py + 1,layout.cellSize - 2,layout.cellSize - 2);
+
+        // Solid edges are visibly raised and exactly match blocked nav cells.
+        const edge = {x,y};
+        graphics.lineStyle(3,0x77807c,0.63);
+        if (!dungeonFloorAt(layout,{x:edge.x,y:edge.y-1}))
+          graphics.lineBetween(px,py,px+layout.cellSize,py);
+        if (!dungeonFloorAt(layout,{x:edge.x,y:edge.y+1}))
+          graphics.lineBetween(px,py+layout.cellSize,px+layout.cellSize,py+layout.cellSize);
+        if (!dungeonFloorAt(layout,{x:edge.x-1,y:edge.y}))
+          graphics.lineBetween(px,py,px,py+layout.cellSize);
+        if (!dungeonFloorAt(layout,{x:edge.x+1,y:edge.y}))
+          graphics.lineBetween(px+layout.cellSize,py,px+layout.cellSize,py+layout.cellSize);
+      }
+    }
+    for (const room of layout.rooms) {
+      const px = (room.center.x + 0.5) * layout.cellSize;
+      const py = (room.center.y + 0.5) * layout.cellSize;
+      if (room.role === 'entrance') {
+        graphics.lineStyle(4,0x8eb8a0,0.85).strokeCircle(px,py,37);
+        this.add.text(px,py-57,'ENTRANCE',{fontFamily:'Georgia, serif',fontSize:'15px',
+          color:'#d0e6cd',stroke:'#172022',strokeThickness:3}).setOrigin(0.5).setDepth(1);
+      } else if (room.role === 'cache' || room.role === 'depth') {
+        const color = room.role === 'cache' ? 0xe5bc78 : 0xc487a4;
+        graphics.lineStyle(4,color,0.82).strokeCircle(px,py,43);
+        graphics.fillStyle(color,0.25).fillCircle(px,py,35);
+        this.add.text(px,py-59,room.role === 'cache' ? 'SEALED CACHE' : 'DEEP CHAMBER',{
+          fontFamily:'Georgia, serif',fontSize:'15px',
+          color:room.role === 'cache' ? '#e8d4a6' : '#ecc2d1',
+          stroke:'#172022',strokeThickness:3,
+        }).setOrigin(0.5).setDepth(1);
+      }
+    }
+  }
+
   private refreshHud(): void {
     this.status.setWordWrapWidth(Math.max(240, this.scale.width - 28));
     this.debugButton?.setX(Math.max(8, this.scale.width - 130));
     this.skillStatusLabel?.setY(Math.max(152, this.scale.height - 46));
+    this.dungeonSeedLabel?.setY(Math.max(192, this.scale.height - 77));
 
   }
 
@@ -382,6 +428,6 @@ export class DungeonScene extends Phaser.Scene {
     }
     if (this.debug.visible) this.redrawRoute();
     if (!this.movement.destination && !this.waypoints.length) this.marker.setVisible(false);
-    this.status.setText(`Tap/click to move · Wheel or +/- to zoom · Zoom ${this.zoom.toFixed(1)}x\nPosition: ${Math.round(x)}, ${Math.round(y)} · Facing: ${state.facing} · ${state.motion} · Trial kills: ${this.kills}`);
+    this.status.setText(`Tap/click to move · Wheel or +/- to zoom · Zoom ${this.zoom.toFixed(1)}x\nPosition: ${Math.round(x)}, ${Math.round(y)} · ${state.motion} · Kills: ${this.kills} · Seed: ${this.dungeon.seed}`);
   }
 }
