@@ -300,7 +300,8 @@ export class DungeonScene extends Phaser.Scene {
           }).setOrigin(0.5));
       }
       if (spawn.guardian) {
-        children.unshift(this.add.circle(0, 0, 43, 0xf0be88, 0.10)
+        // Keep HP bar as child index 1 (the existing health-sync contract).
+        children.push(this.add.circle(0, 0, 43, 0xf0be88, 0.10)
           .setStrokeStyle(2, 0xf0be88, 0.6));
       }
       const container = this.add.container(spawn.position.x, spawn.position.y, children).setDepth(8);
