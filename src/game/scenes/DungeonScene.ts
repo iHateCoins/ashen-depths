@@ -5,6 +5,7 @@ import { findPath } from '../navigation/Pathfinder';
 import { DirectionalAnimator } from '../rendering/DirectionalAnimator';
 import { createDebugOptions, toggleDebug, type DebugOptions } from '../debug/DebugOptions';
 import { AutoCombat } from '../combat/AutoCombat';
+import { AutoSkillSystem, CINDER_BURST } from '../combat/AutoSkillSystem';
 import { createEnemyAgent, updateEnemyAgents, type EnemyAgent } from '../combat/EnemyAI';
 import { PlayerHealth } from '../combat/PlayerHealth';
 
@@ -29,6 +30,8 @@ export class DungeonScene extends Phaser.Scene {
   private face!: Phaser.GameObjects.Triangle;
   private debugButton!: Phaser.GameObjects.Text;
   private combat = new AutoCombat();
+  private skills = new AutoSkillSystem();
+  private skillStatusLabel!: Phaser.GameObjects.Text;
   private enemies: EnemyAgent[] = [];
   private health = new PlayerHealth();
   private healthLabel!: Phaser.GameObjects.Text;
@@ -70,8 +73,23 @@ export class DungeonScene extends Phaser.Scene {
       block(300, y, 480, 32);
       block(1056, y, 480, 32);
     }
+    // Scenes restart without rebuilding the TypeScript object; reset every run.
+    this.health.reset();
+    this.combat = new AutoCombat();
+    this.skills = new AutoSkillSystem();
+    this.kills = 0;
+    this.enemies = [];
+    this.enemyVisuals.clear();
+    this.waypoints = [];
+    this.animator = new DirectionalAnimator();
+    this.debug = createDebugOptions();
+    this.zoom = 1;
     this.movement = new MovementController({ x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 });
-    const practicePositions = [{x:900,y:740},{x:1280,y:740},{x:1160,y:940},{x:980,y:1030},{x:1420,y:850},{x:800,y:900}];
+    const practicePositions = [
+      {x:900,y:740},{x:1280,y:740},{x:1160,y:940},
+      {x:980,y:1030},{x:1420,y:850},{x:800,y:900},
+      {x:1225,y:790},{x:1335,y:795},
+    ];
     for (const [index, position] of practicePositions.entries()) {
       if (!this.grid.isWalkable(this.grid.cellAt(position))) continue;
       const enemy = createEnemyAgent({ id: index+1, position, hp: 100, maxHp: 100 });
@@ -125,10 +143,14 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.add.text(14, 0, 'ASHEN DEPTHS · M02 / PR02', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.add.text(14, 0, 'ASHEN DEPTHS · M02 / PR03', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(32);
     this.healthLabel = this.add.text(14, 90, 'HP: 100 / 100', {fontFamily:'Arial, sans-serif',fontSize:'19px',color:'#f5c0b0',backgroundColor:'#10171bcc',padding:{x:10,y:7}}).setScrollFactor(0).setDepth(105);
+    this.skillStatusLabel = this.add.text(14, 0, 'CINDER BURST: READY', {
+      fontFamily:'Arial, sans-serif',fontSize:'15px',color:'#ffbe83',
+      backgroundColor:'#10171bcc',padding:{x:10,y:7}
+    }).setScrollFactor(0).setDepth(105);
     const shade=this.add.rectangle(0,0,960,540,0x090d10,0.82).setOrigin(0).setInteractive();
     const message=this.add.text(0,-35,'YOU HAVE FALLEN',{fontFamily:'Georgia, serif',fontSize:'34px',color:'#e3c99c'}).setOrigin(0.5);
     const restart=this.add.text(0,32,'RESTART EXPEDITION',{fontFamily:'Arial, sans-serif',fontSize:'19px',color:'#ffffff',backgroundColor:'#42565b',padding:{x:18,y:12}}).setOrigin(0.5).setInteractive();
@@ -146,6 +168,7 @@ export class DungeonScene extends Phaser.Scene {
   private refreshHud(): void {
     this.status.setWordWrapWidth(Math.max(240, this.scale.width - 28));
     this.debugButton?.setX(Math.max(8, this.scale.width - 130));
+    this.skillStatusLabel?.setY(Math.max(152, this.scale.height - 46));
     if(this.defeatOverlay) {
       const shade=this.defeatOverlay.list[0] as Phaser.GameObjects.Rectangle;
       shade.setSize(this.scale.width,this.scale.height);
@@ -186,6 +209,28 @@ export class DungeonScene extends Phaser.Scene {
     this.cameras.main.setZoom(this.zoom);
   }
 
+  private showDamage(position: Point, amount: number, color: string): void {
+    const number = this.add.text(position.x, position.y - 22, `-${amount}`, {
+      fontFamily:'Arial, sans-serif',fontSize:'19px',fontStyle:'bold',color,
+      stroke:'#171c1e',strokeThickness:3,
+    }).setOrigin(0.5).setDepth(20);
+    this.tweens.add({targets:number, y:number.y-38,alpha:0,duration:650,onComplete:()=>number.destroy()});
+  }
+
+  private syncEnemyHealth(): void {
+    for (const enemy of this.enemies) {
+      const visual = this.enemyVisuals.get(enemy.id);
+      if (!visual) continue;
+      const bar = visual.list[1] as Phaser.GameObjects.Rectangle;
+      bar.setScale(enemy.hp / enemy.maxHp, 1);
+      if (enemy.hp <= 0) {
+        visual.destroy();
+        this.enemyVisuals.delete(enemy.id);
+        this.kills++;
+      }
+    }
+  }
+
   update(_time: number, delta: number): void {
     if(this.health.defeated) return;
     const oldX = this.movement.position.x;
@@ -200,18 +245,29 @@ export class DungeonScene extends Phaser.Scene {
     const gait = state.motion === 'walk' ? Math.sin(state.phase * Math.PI / 2) : 0;
     this.cloak.setY(5 + gait * 3);
     this.face.setY(-11 + Math.abs(gait) * 2);
-    for (const attack of this.combat.update(this.movement.position,this.enemies,delta/1000)) {
-      const enemy = this.enemies.find(e=>e.id===attack.targetId);
+    const canSee = (from: Point, to: Point): boolean => this.grid.isSegmentWalkable(from, to);
+    for (const attack of this.combat.update(this.movement.position, this.enemies, delta / 1000, canSee)) {
+      const enemy = this.enemies.find(e => e.id === attack.targetId);
       if (!enemy) continue;
-      const pulse = this.add.circle(enemy.position.x,enemy.position.y,26,0xf4d28d,0.3).setDepth(12);
+      const pulse = this.add.circle(enemy.position.x, enemy.position.y, 26, 0xf4d28d, 0.3).setDepth(12);
       this.tweens.add({targets:pulse,alpha:0,scale:1.8,duration:220,onComplete:()=>pulse.destroy()});
-      const visual = this.enemyVisuals.get(enemy.id);
-      if (visual) {
-        const healthBar = visual.list[1] as Phaser.GameObjects.Rectangle;
-        healthBar.setScale(enemy.hp/enemy.maxHp,1);
-        if (enemy.hp<=0) {visual.destroy();this.enemyVisuals.delete(enemy.id);this.kills++;}
+      this.showDamage(enemy.position, attack.damage, '#fff0b6');
+    }
+    for (const cast of this.skills.update(this.movement.position, this.enemies, delta / 1000, canSee)) {
+      const burst = this.add.circle(cast.center.x, cast.center.y, cast.radius, 0xe56c32, 0.25)
+        .setStrokeStyle(4, 0xffb16e, 0.9).setDepth(12);
+      this.tweens.add({targets:burst,scale:1.2,alpha:0,duration:460,onComplete:()=>burst.destroy()});
+      for (const hit of cast.hits) {
+        const enemy = this.enemies.find(e => e.id === hit.enemyId);
+        if (enemy) this.showDamage(enemy.position, hit.damage, '#ff9a5c');
       }
     }
+    // Both attacks and skills change health; synchronize enemy visuals once per frame.
+    this.syncEnemyHealth();
+    const remaining = this.skills.remaining(CINDER_BURST.id);
+    this.skillStatusLabel.setText(remaining <= 0.01
+      ? 'CINDER BURST: READY · automatic'
+      : `CINDER BURST: ${remaining.toFixed(1)}s · automatic`);
     for (const hit of updateEnemyAgents(this.enemies,this.movement.position,this.grid,delta/1000)) {
       if(this.health.damage(hit.damage)) this.cameras.main.shake(110,0.002);
     }
