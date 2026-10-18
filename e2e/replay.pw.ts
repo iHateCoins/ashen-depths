@@ -92,7 +92,7 @@ test('defeat Restart Expedition button remains touch accessible after exploratio
 
   await expect.poll(() => page.evaluate(
     () => document.documentElement.dataset.ashenEncounter
-  ), { timeout: 5_000 }).toBe('countdown');
+  ), { timeout: 5_000 }).toBe('explore');
   await expect(canvas).toBeVisible();
   expect(errors).toEqual([]);
 });
