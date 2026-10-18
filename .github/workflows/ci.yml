@@ -16,3 +16,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+        env:
+          GITHUB_PAGES: 'true'
+      - run: node scripts/check-pages-build.mjs
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm run test:e2e
