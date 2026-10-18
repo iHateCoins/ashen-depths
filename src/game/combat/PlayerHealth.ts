@@ -9,5 +9,11 @@ export class PlayerHealth {
     if (this.hp === 0) this.defeated=true;
     return true;
   }
+  heal(amount: number): number {
+    if (this.defeated || !Number.isFinite(amount) || amount <= 0) return 0;
+    const previous = this.hp;
+    this.hp = Math.min(this.maxHp, this.hp + amount);
+    return this.hp - previous;
+  }
   reset(): void { this.hp=this.maxHp; this.defeated=false; }
 }
