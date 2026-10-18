@@ -15,7 +15,7 @@ describe('finite encounter progression', () => {
   it('starts the first wave after its countdown and stays in combat while enemies survive', () => {
     const director = new EncounterDirector();
     expect(tick(director, 1, 0)).toEqual([]);
-    expect(tick(director, 0.6, 0)).toEqual([
+    expect(tick(director, 0.6, 1)).toEqual([
       { type: 'wave-started', wave: 1, kinds: ENCOUNTER_WAVES[0] },
     ]);
     expect(tick(director, 20, 3)).toEqual([]);
@@ -24,18 +24,18 @@ describe('finite encounter progression', () => {
 
   it('allows intermission, exactly three waves and one completion event', () => {
     const director = new EncounterDirector();
-    expect(tick(director, 1.55, 0)).toHaveLength(1);
+    expect(tick(director, 1.55, 1)).toHaveLength(1);
     expect(director.update(0.05, 0)).toEqual([
       { type: 'wave-cleared', wave: 1, final: false },
     ]);
     expect(tick(director, 2.95, 0)).toEqual([]);
-    expect(tick(director, 0.1, 0)).toEqual([
+    expect(tick(director, 0.1, 1)).toEqual([
       { type: 'wave-started', wave: 2, kinds: ENCOUNTER_WAVES[1] },
     ]);
     expect(director.update(0.05, 0)).toEqual([
       { type: 'wave-cleared', wave: 2, final: false },
     ]);
-    expect(tick(director, 3.1, 0)).toEqual([
+    expect(tick(director, 3.1, 1)).toEqual([
       { type: 'wave-started', wave: 3, kinds: ENCOUNTER_WAVES[2] },
     ]);
     expect(director.update(0.05, 0)).toEqual([
