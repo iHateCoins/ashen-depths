@@ -12,6 +12,8 @@ import { EncounterDirector, type EncounterEvent } from '../combat/EncounterDirec
 import { planEncounterSpawns } from '../combat/SpawnPlanner';
 import { ResultOverlay } from '../ui/ResultOverlay';
 import { createDungeonNavigationGrid, dungeonFloorAt, dungeonSeedFromSearch, generateDungeon, type DungeonLayout } from '../dungeon/DungeonGenerator';
+import { ExplorationTracker } from '../dungeon/ExplorationTracker';
+import { ExplorationView } from '../dungeon/ExplorationView';
 
 const WORLD_WIDTH = 2304;
 const WORLD_HEIGHT = 1536;
@@ -26,6 +28,8 @@ export class DungeonScene extends Phaser.Scene {
   private grid!: NavigationGrid;
   private waypoints: Point[] = [];
   private dungeon!: DungeonLayout;
+  private exploration!: ExplorationTracker;
+  private explorationView!: ExplorationView;
   private dungeonSeedLabel!: Phaser.GameObjects.Text;
   private animator = new DirectionalAnimator();
   private debug: DebugOptions = createDebugOptions();
@@ -70,6 +74,8 @@ export class DungeonScene extends Phaser.Scene {
     this.debug = createDebugOptions();
     this.zoom = 1;
     this.movement = new MovementController(this.dungeon.entrance);
+    this.exploration = new ExplorationTracker(this.dungeon, this.grid);
+    this.exploration.update(this.movement.position);
     this.encounters = new EncounterDirector();
     this.nextEnemyId = 1;
     const shadow = this.add.ellipse(0, 10, 34, 16, 0x000000, 0.45);
@@ -79,9 +85,10 @@ export class DungeonScene extends Phaser.Scene {
     this.player = this.add.container(this.movement.position.x, this.movement.position.y, [shadow, body, this.cloak, this.face]);
     this.player.setDepth(10);
     this.attackWarnings = this.add.graphics().setDepth(9);
-    this.debugGraphics = this.add.graphics().setDepth(20).setVisible(false);
-    this.routeGraphics = this.add.graphics().setDepth(19).setVisible(false);
-    this.marker = this.add.circle(0, 0, 12, 0xd9b56c, 0.22).setStrokeStyle(2, 0xeacb85).setVisible(false);
+    this.debugGraphics = this.add.graphics().setDepth(35).setVisible(false);
+    this.routeGraphics = this.add.graphics().setDepth(34).setVisible(false);
+    this.marker = this.add.circle(0, 0, 12, 0xd9b56c, 0.22).setStrokeStyle(2, 0xeacb85).setVisible(false).setDepth(26);
+    this.explorationView = new ExplorationView(this, this.dungeon, this.exploration, this.movement.position);
     this.cameras.main.setBounds(0, 0, this.grid.width, this.grid.height);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
     this.cameras.main.setZoom(this.zoom);
@@ -118,7 +125,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.add.text(14, 0, 'ASHEN DEPTHS · M03 / PR01', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.add.text(14, 0, 'ASHEN DEPTHS · M03 / PR02', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(32);
     this.dungeonSeedLabel = this.add.text(14, 0, `DUNGEON SEED: ${this.dungeon.seed}`, {
@@ -140,9 +147,11 @@ export class DungeonScene extends Phaser.Scene {
     this.victoryOverlay = new ResultOverlay('victory', () => this.scene.restart());
     const defeatOverlay = this.defeatOverlay;
     const victoryOverlay = this.victoryOverlay;
+    const explorationView = this.explorationView;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       defeatOverlay.destroy();
       victoryOverlay.destroy();
+      explorationView.destroy();
     });
     this.debugButton = this.add.text(0, 8, 'DEBUG: OFF', {fontFamily:'Arial, sans-serif',fontSize:'14px',color:'#e3c99c',backgroundColor:'#243136',padding:{x:10,y:8}}).setScrollFactor(0).setDepth(110).setInteractive();
     this.debugButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); this.toggleDebug(); });
@@ -370,6 +379,16 @@ export class DungeonScene extends Phaser.Scene {
     if (!this.movement.destination && this.waypoints.length) this.movement.moveTo(this.waypoints.shift()!);
     const { x, y } = this.movement.position;
     this.player.setPosition(x, y);
+    const explorationDelta = this.exploration.update(this.movement.position);
+    if (explorationDelta.movedCell) {
+      this.explorationView.refresh(this.movement.position);
+      for (const room of explorationDelta.discovered) {
+        if (room.role === 'entrance') continue;
+        const message = room.role === 'cache' ? 'SEALED CACHE DISCOVERED' :
+          room.role === 'depth' ? 'DEEP CHAMBER DISCOVERED' : 'CHAMBER DISCOVERED';
+        this.showCombatText(this.movement.position, message, '#d8cda7');
+      }
+    }
     const state = this.animator.update(x - oldX, y - oldY, delta / 1000);
     const angles = { north: 0, east: Math.PI / 2, south: Math.PI, west: -Math.PI / 2 };
     this.player.setRotation(angles[state.facing]);
@@ -428,6 +447,6 @@ export class DungeonScene extends Phaser.Scene {
     }
     if (this.debug.visible) this.redrawRoute();
     if (!this.movement.destination && !this.waypoints.length) this.marker.setVisible(false);
-    this.status.setText(`Tap/click to move · Wheel or +/- to zoom · Zoom ${this.zoom.toFixed(1)}x\nPosition: ${Math.round(x)}, ${Math.round(y)} · ${state.motion} · Kills: ${this.kills} · Seed: ${this.dungeon.seed}`);
+    this.status.setText(`Tap/click to move · Wheel or +/- to zoom · Zoom ${this.zoom.toFixed(1)}x\nPosition: ${Math.round(x)}, ${Math.round(y)} · ${state.motion} · Kills: ${this.kills} · Rooms ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} · Seed: ${this.dungeon.seed}`);
   }
 }
