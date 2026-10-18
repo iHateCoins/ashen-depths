@@ -9,7 +9,7 @@ test('compiled Pages build displays a playable dungeon rather than a blank scree
   await expect(page.locator('#boot-status')).toHaveCount(0);
   expect(errors).toEqual([]);
   const canvas = page.locator('canvas');
-  if (test.info().project.name === 'mobile-landscape') {
+  if (test.info().project.name !== 'desktop') {
     const bounds = await canvas.boundingBox();
     expect(bounds).not.toBeNull();
     await page.touchscreen.tap(bounds!.x + 150, bounds!.y + 160);
