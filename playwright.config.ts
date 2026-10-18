@@ -9,7 +9,8 @@ export default defineConfig({
   use: { screenshot: 'only-on-failure', trace: 'retain-on-failure' },
   projects: [
     { name: 'desktop', use: { browserName: 'chromium', viewport: { width: 1024, height: 768 } } },
-    { name: 'mobile-landscape', use: { browserName: 'chromium', viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true } }
+    { name: 'mobile-landscape', use: { browserName: 'chromium', viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true } },
+    { name: 'iphone-safari', use: { browserName: 'webkit', viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true } }
   ],
   webServer: {
     command: 'npm run preview -- --host 127.0.0.1 --port 4173',
