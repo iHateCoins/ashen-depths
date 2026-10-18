@@ -22,6 +22,8 @@ function createElement<K extends keyof HTMLElementTagNameMap>(
  */
 export class LootUI {
   private readonly button: HTMLButtonElement;
+  private readonly finishButton: HTMLButtonElement;
+  private victoryOffered = false;
   private readonly nearbyPanel: HTMLElement;
   private readonly nearbyTitle: HTMLElement;
   private readonly nearbyDescription: HTMLElement;
@@ -48,6 +50,12 @@ export class LootUI {
     });
     document.body.append(bagButton);
     this.button = bagButton;
+    const finish = createElement('button', 'ashen-finish-run', 'FINISH EXPEDITION');
+    finish.id = 'ashen-finish-run';
+    finish.type = 'button';
+    finish.hidden = true;
+    document.body.append(finish);
+    this.finishButton = finish;
 
     const nearby = createElement('aside', 'ashen-loot-nearby');
     nearby.id = 'ashen-loot-nearby';
@@ -101,6 +109,23 @@ export class LootUI {
   }
 
   get isOpen(): boolean { return this.open; }
+
+  /** Show a deliberate end-of-run action after the Warden has fallen.
+   * The player can inspect and pick up its loot before ending the run.
+   * This is NOT extraction: all items remain unsecured in PR01.
+   */
+  enableFinish(onFinish: () => void): void {
+    if (this.victoryOffered) return;
+    this.victoryOffered = true;
+    this.finishButton.hidden = false;
+    this.finishButton.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeBag();
+      this.hideForResult();
+      onFinish();
+    }, { once: true });
+  }
 
   openBag(): void {
     this.open = true;
@@ -184,11 +209,13 @@ export class LootUI {
   hideForResult(): void {
     this.closeBag();
     this.button.hidden = true;
+    this.finishButton.hidden = true;
     this.nearbyPanel.hidden = true;
   }
 
   destroy(): void {
     this.button.remove();
+    this.finishButton.remove();
     this.nearbyPanel.remove();
     this.bagOverlay.remove();
   }
