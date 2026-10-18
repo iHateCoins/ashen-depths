@@ -205,3 +205,17 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
   .ashen-loot-nearby {bottom:calc(74px + env(safe-area-inset-bottom));padding:7px;}
   .ashen-bag-toggle {bottom:calc(30px + env(safe-area-inset-bottom));padding:7px 11px;}
 }
+
+.ashen-finish-run {
+  position:fixed;
+  left:50%;top:calc(10px + env(safe-area-inset-top));
+  transform:translateX(-50%);z-index:1220;
+  min-height:41px;padding:9px 15px;
+  border:1px solid #e6c38a;border-radius:8px;
+  background:#415947;color:#f6e1ae;
+  font:600 14px Arial,sans-serif;white-space:nowrap;
+  box-shadow:0 4px 15px #0009;
+  touch-action:manipulation;cursor:pointer;
+}
+.ashen-finish-run[hidden] {display:none;}
+.ashen-finish-run:focus-visible {outline:3px solid #ffe4aa;outline-offset:3px;}
