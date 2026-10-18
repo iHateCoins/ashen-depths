@@ -19,5 +19,5 @@ jobs:
         env:
           GITHUB_PAGES: 'true'
       - run: node scripts/check-pages-build.mjs
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       - run: npm run test:e2e
