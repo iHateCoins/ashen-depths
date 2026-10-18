@@ -9,11 +9,11 @@ export class AutoCombat {
   constructor(range = 250, damage = 25, interval = 0.7) {
     this.range = range; this.damage = damage; this.interval = interval;
   }
-  update(player: Point, enemies: Enemy[], dt: number): Attack[] {
+  update(player: Point, enemies: Enemy[], dt: number, hasLineOfSight: (from: Point, to: Point) => boolean = () => true): Attack[] {
     if (!Number.isFinite(dt) || dt <= 0) return [];
     this.cooldown = Math.max(0, this.cooldown - Math.min(dt, 0.1));
     if (this.cooldown > 0) return [];
-    const target = enemies.filter(e => e.hp > 0 && Math.hypot(e.position.x-player.x,e.position.y-player.y) <= this.range)
+    const target = enemies.filter(e => e.hp > 0 && Math.hypot(e.position.x-player.x,e.position.y-player.y) <= this.range && hasLineOfSight(player, e.position))
       .sort((a,b) => {
         const da = Math.hypot(a.position.x-player.x,a.position.y-player.y);
         const db = Math.hypot(b.position.x-player.x,b.position.y-player.y);
