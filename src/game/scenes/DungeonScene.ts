@@ -6,7 +6,7 @@ import { DirectionalAnimator } from '../rendering/DirectionalAnimator';
 import { createDebugOptions, toggleDebug, type DebugOptions } from '../debug/DebugOptions';
 import { AutoCombat } from '../combat/AutoCombat';
 import { AutoSkillSystem, CINDER_BURST } from '../combat/AutoSkillSystem';
-import { createEnemyAgent, updateEnemyAgents, type EnemyAgent } from '../combat/EnemyAI';
+import { createEnemyAgent, ENEMY_ARCHETYPES, updateEnemyAgents, type EnemyAgent } from '../combat/EnemyAI';
 import { PlayerHealth } from '../combat/PlayerHealth';
 
 const WORLD_WIDTH = 2304;
@@ -37,6 +37,7 @@ export class DungeonScene extends Phaser.Scene {
   private healthLabel!: Phaser.GameObjects.Text;
   private defeatOverlay!: Phaser.GameObjects.Container;
   private enemyVisuals = new Map<number, Phaser.GameObjects.Container>();
+  private attackWarnings!: Phaser.GameObjects.Graphics;
   private kills = 0;
 
   constructor() { super('DungeonScene'); }
@@ -88,15 +89,21 @@ export class DungeonScene extends Phaser.Scene {
     const practicePositions = [
       {x:900,y:740},{x:1280,y:740},{x:1160,y:940},
       {x:980,y:1030},{x:1420,y:850},{x:800,y:900},
-      {x:1225,y:790},{x:1335,y:795},
+      {x:1540,y:760},{x:1680,y:850},
     ];
     for (const [index, position] of practicePositions.entries()) {
       if (!this.grid.isWalkable(this.grid.cellAt(position))) continue;
-      const enemy = createEnemyAgent({ id: index+1, position, hp: 100, maxHp: 100 });
+      const kind = index >= 6 ? 'brute' : 'wretch';
+      const hp = ENEMY_ARCHETYPES[kind].hp;
+      const enemy = createEnemyAgent({ id: index+1, position, hp, maxHp: hp }, kind);
       this.enemies.push(enemy);
-      const shape = this.add.circle(0,0,18,0xa44949).setStrokeStyle(3,0xf1a49b);
-      const bar = this.add.rectangle(0,-29,40,5,0x7eb88e).setOrigin(0.5);
-      const container = this.add.container(position.x,position.y,[shape,bar]).setDepth(8);
+      const brute = kind === 'brute';
+      const shape = this.add.circle(0,0,brute ? 27 : 18,brute ? 0x75455e : 0xa44949)
+        .setStrokeStyle(3,brute ? 0xe7a4cf : 0xf1a49b);
+      const bar = this.add.rectangle(0,brute ? -40 : -29,brute ? 55 : 40,5,0x7eb88e).setOrigin(0.5);
+      const children: Phaser.GameObjects.GameObject[] = [shape,bar];
+      if (brute) children.push(this.add.text(0,11,'BRUTE',{fontFamily:'Arial, sans-serif',fontSize:'11px',color:'#ffe0ef'}).setOrigin(0.5));
+      const container = this.add.container(position.x,position.y,children).setDepth(8);
       this.enemyVisuals.set(enemy.id,container);
     }
     const shadow = this.add.ellipse(0, 10, 34, 16, 0x000000, 0.45);
@@ -105,6 +112,7 @@ export class DungeonScene extends Phaser.Scene {
     this.face = this.add.triangle(0, -11, -6, 5, 0, -8, 6, 5, 0xe8c68c);
     this.player = this.add.container(this.movement.position.x, this.movement.position.y, [shadow, body, this.cloak, this.face]);
     this.player.setDepth(10);
+    this.attackWarnings = this.add.graphics().setDepth(9);
     this.debugGraphics = this.add.graphics().setDepth(20).setVisible(false);
     this.routeGraphics = this.add.graphics().setDepth(19).setVisible(false);
     this.marker = this.add.circle(0, 0, 12, 0xd9b56c, 0.22).setStrokeStyle(2, 0xeacb85).setVisible(false);
@@ -143,7 +151,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.add.text(14, 0, 'ASHEN DEPTHS · M02 / PR03', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.add.text(14, 0, 'ASHEN DEPTHS · M02 / PR04', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(32);
     this.healthLabel = this.add.text(14, 90, 'HP: 100 / 100', {fontFamily:'Arial, sans-serif',fontSize:'19px',color:'#f5c0b0',backgroundColor:'#10171bcc',padding:{x:10,y:7}}).setScrollFactor(0).setDepth(105);
@@ -217,6 +225,32 @@ export class DungeonScene extends Phaser.Scene {
     this.tweens.add({targets:number, y:number.y-38,alpha:0,duration:650,onComplete:()=>number.destroy()});
   }
 
+  private renderAttackWarnings(): void {
+    this.attackWarnings.clear();
+    for (const enemy of this.enemies) {
+      if (enemy.hp <= 0 || enemy.phase !== 'windup' || !enemy.attackTarget) continue;
+      const stats = ENEMY_ARCHETYPES[enemy.kind];
+      const progress = Phaser.Math.Clamp(1 - enemy.phaseRemaining / stats.windupSeconds, 0, 1);
+      const { x, y } = enemy.attackTarget;
+      this.attackWarnings.fillStyle(enemy.kind === 'brute' ? 0xd85486 : 0xe66f4e, 0.16 + progress * 0.3);
+      this.attackWarnings.fillCircle(x, y, stats.attackRadius);
+      this.attackWarnings.lineStyle(3 + progress * 2, enemy.kind === 'brute' ? 0xffacd4 : 0xffb085, 1);
+      this.attackWarnings.strokeCircle(x, y, stats.attackRadius);
+      this.attackWarnings.lineStyle(5, 0xffe5be, 0.95);
+      this.attackWarnings.beginPath();
+      this.attackWarnings.arc(x, y, stats.attackRadius + 5, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+      this.attackWarnings.strokePath();
+    }
+  }
+
+  private showCombatText(position: Point, message: string, color: string): void {
+    const label = this.add.text(position.x, position.y - 42, message, {
+      fontFamily:'Arial, sans-serif',fontSize:'17px',fontStyle:'bold',color,
+      stroke:'#14191e',strokeThickness:3,
+    }).setOrigin(0.5).setDepth(22);
+    this.tweens.add({targets:label,y:label.y-33,alpha:0,duration:650,onComplete:()=>label.destroy()});
+  }
+
   private syncEnemyHealth(): void {
     for (const enemy of this.enemies) {
       const visual = this.enemyVisuals.get(enemy.id);
@@ -268,9 +302,18 @@ export class DungeonScene extends Phaser.Scene {
     this.skillStatusLabel.setText(remaining <= 0.01
       ? 'CINDER BURST: READY · automatic'
       : `CINDER BURST: ${remaining.toFixed(1)}s · automatic`);
-    for (const hit of updateEnemyAgents(this.enemies,this.movement.position,this.grid,delta/1000)) {
-      if(this.health.damage(hit.damage)) this.cameras.main.shake(110,0.002);
+    for (const strike of updateEnemyAgents(this.enemies,this.movement.position,this.grid,delta/1000)) {
+      const flash = this.add.circle(strike.center.x,strike.center.y,strike.radius,
+        strike.hit ? 0xf26b57 : 0x89baa3,0.28).setDepth(12);
+      this.tweens.add({targets:flash,alpha:0,scale:1.1,duration:240,onComplete:()=>flash.destroy()});
+      if (strike.hit && this.health.damage(strike.damage)) {
+        this.cameras.main.shake(110,0.002);
+        this.showDamage(this.movement.position,strike.damage,'#ff7777');
+      } else if (!strike.hit) {
+        this.showCombatText(strike.center,'DODGED','#b0e2ca');
+      }
     }
+    this.renderAttackWarnings();
     for(const enemy of this.enemies) {
       const visual=this.enemyVisuals.get(enemy.id);
       if(visual) visual.setPosition(enemy.position.x,enemy.position.y);
@@ -282,6 +325,6 @@ export class DungeonScene extends Phaser.Scene {
     }
     if (this.debug.visible) this.redrawRoute();
     if (!this.movement.destination && !this.waypoints.length) this.marker.setVisible(false);
-    this.status.setText(`Tap/click to move · Wheel or +/- to zoom · Zoom ${this.zoom.toFixed(1)}x\nPosition: ${Math.round(x)}, ${Math.round(y)} · Facing: ${state.facing} · ${state.motion} · Auto-attack · Kills: ${this.kills}`);
+    this.status.setText(`Tap/click to move · Wheel or +/- to zoom · Zoom ${this.zoom.toFixed(1)}x\nPosition: ${Math.round(x)}, ${Math.round(y)} · Facing: ${state.facing} · ${state.motion} · Dodge warning circles · Kills: ${this.kills}`);
   }
 }
