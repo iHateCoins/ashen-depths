@@ -156,7 +156,7 @@ export class DungeonScene extends Phaser.Scene {
     const message=this.add.text(0,-35,'YOU HAVE FALLEN',{fontFamily:'Georgia, serif',fontSize:'34px',color:'#e3c99c'}).setOrigin(0.5);
     const restart=this.add.text(0,32,'RESTART EXPEDITION',{fontFamily:'Arial, sans-serif',fontSize:'19px',color:'#ffffff',backgroundColor:'#42565b',padding:{x:18,y:12}}).setOrigin(0.5).setInteractive();
     restart.on('pointerdown',(_pointer:Phaser.Input.Pointer,_lx:number,_ly:number,event:Phaser.Types.Input.EventData)=>{event.stopPropagation();this.scene.restart();});
-    this.defeatOverlay=this.add.container(0,0,[shade,message,restart]).setScrollFactor(0).setDepth(200).setVisible(false);
+    this.defeatOverlay=this.add.container(0,0,[shade,message,restart]).setScrollFactor(0,0,true).setDepth(200).setVisible(false);
     const victoryShade=this.add.rectangle(0,0,960,540,0x0b1517,0.84).setOrigin(0).setInteractive();
     const victoryTitle=this.add.text(0,0,'TRIAL CLEARED',{
       fontFamily:'Georgia, serif',fontSize:'34px',color:'#e3c99c',
@@ -171,8 +171,11 @@ export class DungeonScene extends Phaser.Scene {
     victoryRestart.on('pointerdown',(_pointer:Phaser.Input.Pointer,_lx:number,_ly:number,event:Phaser.Types.Input.EventData)=>{
       event.stopPropagation();this.scene.restart();
     });
+    // Important: Phaser Containers do not propagate scroll factors to their
+    // children by default. Without updateChildren=true the panel renders in
+    // screen space but the Replay button's pointer hit area follows the camera.
     this.victoryOverlay=this.add.container(0,0,[victoryShade,victoryTitle,victoryText,victoryRestart])
-      .setScrollFactor(0).setDepth(200).setVisible(false);
+      .setScrollFactor(0,0,true).setDepth(200).setVisible(false);
     this.debugButton = this.add.text(0, 8, 'DEBUG: OFF', {fontFamily:'Arial, sans-serif',fontSize:'14px',color:'#e3c99c',backgroundColor:'#243136',padding:{x:10,y:8}}).setScrollFactor(0).setDepth(110).setInteractive();
     this.debugButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); this.toggleDebug(); });
     this.refreshHud();
