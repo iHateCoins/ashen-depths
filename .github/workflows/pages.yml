@@ -26,6 +26,7 @@ jobs:
         env:
           GITHUB_PAGES: 'true'
       - run: node scripts/check-pages-build.mjs
+      - run: node scripts/check-version-manifest.mjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
