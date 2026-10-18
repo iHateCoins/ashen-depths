@@ -60,6 +60,7 @@ export class DungeonScene extends Phaser.Scene {
   private groundVisuals = new Map<string, Phaser.GameObjects.Container>();
   private victoryOverlay!: ResultOverlay;
   private kills = 0;
+  private finalized = false;
 
   constructor() { super('DungeonScene'); }
 
@@ -80,6 +81,7 @@ export class DungeonScene extends Phaser.Scene {
     this.combat = new AutoCombat();
     this.skills = new AutoSkillSystem();
     this.kills = 0;
+    this.finalized = false;
     this.enemies = [];
     this.enemyVisuals.clear();
     this.waypoints = [];
@@ -107,7 +109,7 @@ export class DungeonScene extends Phaser.Scene {
     this.cameras.main.setZoom(this.zoom);
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.health.defeated || this.lootUi.isOpen) return;
+      if (this.health.defeated || this.finalized || this.lootUi.isOpen) return;
       if (pointer.event instanceof MouseEvent && pointer.event.button !== 0) return;
       const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
       const x = Phaser.Math.Clamp(point.x, 24, this.grid.width - 24);
@@ -499,7 +501,7 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    if(this.health.defeated || this.lootUi.isOpen) return;
+    if(this.health.defeated || this.finalized || this.lootUi.isOpen) return;
     const oldX = this.movement.position.x;
     const oldY = this.movement.position.y;
     this.movement.update(delta / 1000);
@@ -567,6 +569,7 @@ export class DungeonScene extends Phaser.Scene {
       // loot and inspect the bag before deliberately finishing the run.
       this.showCombatText(this.movement.position, 'WARDEN DEFEATED', '#f5d7a4');
       this.lootUi.enableFinish(() => {
+        this.finalized = true;
         this.optionalUi.hide();
         this.victoryOverlay.show();
         this.movement.stop();
