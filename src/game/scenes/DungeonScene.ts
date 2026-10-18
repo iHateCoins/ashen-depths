@@ -4,7 +4,9 @@ import { NavigationGrid } from '../navigation/Grid';
 import { findPath } from '../navigation/Pathfinder';
 import { DirectionalAnimator } from '../rendering/DirectionalAnimator';
 import { createDebugOptions, toggleDebug, type DebugOptions } from '../debug/DebugOptions';
-import { AutoCombat, type Enemy } from '../combat/AutoCombat';
+import { AutoCombat } from '../combat/AutoCombat';
+import { createEnemyAgent, updateEnemyAgents, type EnemyAgent } from '../combat/EnemyAI';
+import { PlayerHealth } from '../combat/PlayerHealth';
 
 const WORLD_WIDTH = 2304;
 const WORLD_HEIGHT = 1536;
@@ -27,7 +29,10 @@ export class DungeonScene extends Phaser.Scene {
   private face!: Phaser.GameObjects.Triangle;
   private debugButton!: Phaser.GameObjects.Text;
   private combat = new AutoCombat();
-  private enemies: Enemy[] = [];
+  private enemies: EnemyAgent[] = [];
+  private health = new PlayerHealth();
+  private healthLabel!: Phaser.GameObjects.Text;
+  private defeatOverlay!: Phaser.GameObjects.Container;
   private enemyVisuals = new Map<number, Phaser.GameObjects.Container>();
   private kills = 0;
 
@@ -69,7 +74,7 @@ export class DungeonScene extends Phaser.Scene {
     const practicePositions = [{x:900,y:740},{x:1280,y:740},{x:1160,y:940},{x:980,y:1030},{x:1420,y:850},{x:800,y:900}];
     for (const [index, position] of practicePositions.entries()) {
       if (!this.grid.isWalkable(this.grid.cellAt(position))) continue;
-      const enemy: Enemy = { id: index+1, position, hp: 100, maxHp: 100 };
+      const enemy = createEnemyAgent({ id: index+1, position, hp: 100, maxHp: 100 });
       this.enemies.push(enemy);
       const shape = this.add.circle(0,0,18,0xa44949).setStrokeStyle(3,0xf1a49b);
       const bar = this.add.rectangle(0,-29,40,5,0x7eb88e).setOrigin(0.5);
@@ -120,9 +125,15 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.add.text(14, 0, 'ASHEN DEPTHS · M02 / PR01', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.add.text(14, 0, 'ASHEN DEPTHS · M02 / PR02', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(32);
+    this.healthLabel = this.add.text(14, 90, 'HP: 100 / 100', {fontFamily:'Arial, sans-serif',fontSize:'19px',color:'#f5c0b0',backgroundColor:'#10171bcc',padding:{x:10,y:7}}).setScrollFactor(0).setDepth(105);
+    const shade=this.add.rectangle(0,0,960,540,0x090d10,0.82).setOrigin(0).setInteractive();
+    const message=this.add.text(0,-35,'YOU HAVE FALLEN',{fontFamily:'Georgia, serif',fontSize:'34px',color:'#e3c99c'}).setOrigin(0.5);
+    const restart=this.add.text(0,32,'RESTART EXPEDITION',{fontFamily:'Arial, sans-serif',fontSize:'19px',color:'#ffffff',backgroundColor:'#42565b',padding:{x:18,y:12}}).setOrigin(0.5).setInteractive();
+    restart.on('pointerdown',(_pointer:Phaser.Input.Pointer,_lx:number,_ly:number,event:Phaser.Types.Input.EventData)=>{event.stopPropagation();this.scene.restart();});
+    this.defeatOverlay=this.add.container(0,0,[shade,message,restart]).setScrollFactor(0).setDepth(200).setVisible(false);
     this.debugButton = this.add.text(0, 8, 'DEBUG: OFF', {fontFamily:'Arial, sans-serif',fontSize:'14px',color:'#e3c99c',backgroundColor:'#243136',padding:{x:10,y:8}}).setScrollFactor(0).setDepth(110).setInteractive();
     this.debugButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); this.toggleDebug(); });
     this.refreshHud();
@@ -133,6 +144,12 @@ export class DungeonScene extends Phaser.Scene {
   private refreshHud(): void {
     this.status.setWordWrapWidth(Math.max(240, this.scale.width - 28));
     this.debugButton?.setX(Math.max(8, this.scale.width - 130));
+    if(this.defeatOverlay) {
+      const shade=this.defeatOverlay.list[0] as Phaser.GameObjects.Rectangle;
+      shade.setSize(this.scale.width,this.scale.height);
+      (this.defeatOverlay.list[1] as Phaser.GameObjects.Text).setPosition(this.scale.width/2,this.scale.height/2-35);
+      (this.defeatOverlay.list[2] as Phaser.GameObjects.Text).setPosition(this.scale.width/2,this.scale.height/2+32);
+    }
   }
 
   private toggleDebug(): void {
@@ -168,6 +185,7 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
+    if(this.health.defeated) return;
     const oldX = this.movement.position.x;
     const oldY = this.movement.position.y;
     this.movement.update(delta / 1000);
@@ -191,6 +209,18 @@ export class DungeonScene extends Phaser.Scene {
         healthBar.setScale(enemy.hp/enemy.maxHp,1);
         if (enemy.hp<=0) {visual.destroy();this.enemyVisuals.delete(enemy.id);this.kills++;}
       }
+    }
+    for (const hit of updateEnemyAgents(this.enemies,this.movement.position,this.grid,delta/1000)) {
+      if(this.health.damage(hit.damage)) this.cameras.main.shake(110,0.002);
+    }
+    for(const enemy of this.enemies) {
+      const visual=this.enemyVisuals.get(enemy.id);
+      if(visual) visual.setPosition(enemy.position.x,enemy.position.y);
+    }
+    this.healthLabel.setText(`HP: ${this.health.hp} / ${this.health.maxHp}`);
+    if(this.health.defeated) {
+      this.movement.stop();this.waypoints=[];this.marker.setVisible(false);
+      this.defeatOverlay.setVisible(true);
     }
     if (this.debug.visible) this.redrawRoute();
     if (!this.movement.destination && !this.waypoints.length) this.marker.setVisible(false);
