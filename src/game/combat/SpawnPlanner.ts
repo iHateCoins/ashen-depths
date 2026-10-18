@@ -1,18 +1,21 @@
 import type { Point } from '../movement/MovementController';
-import { NavigationGrid } from '../navigation/Grid';
-import { findPath } from '../navigation/Pathfinder';
+import { NavigationGrid, type Cell } from '../navigation/Grid';
 import type { EnemyKind } from './EnemyAI';
 
 export interface PlannedEnemy { kind: EnemyKind; position: Point }
 
-const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
-const RADII = [200, 250, 305, 165, 335, 120];
+const CARDINAL = [
+  {x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1},
+] as const;
 
 /**
- * Find reachable, non-overlapping positions in an annulus around the player.
- * Fixed candidate order and no random/global state keeps builds reproducible.
- * Unreachable or crowded layouts may return fewer spawns instead of placing
- * enemies inside walls or on top of the player.
+ * Walk only the connected component the player can reach, then choose
+ * separated, visible-floor spawn positions. This matters in seeded dungeons:
+ * randomly sampling points in solid rock would otherwise spend thousands of
+ * pathfinding attempts before each wave starts.
+ *
+ * Candidates are ordered deterministically by distance and seed-like wave
+ * jitter; first prefer nearby combat, then fall back to any reachable floor.
  */
 export function planEncounterSpawns(
   grid: NavigationGrid,
@@ -20,40 +23,46 @@ export function planEncounterSpawns(
   kinds: readonly EnemyKind[],
   wave: number,
 ): PlannedEnemy[] {
-  if (!grid.isWalkable(grid.cellAt(origin))) return [];
+  const start = grid.cellAt(origin);
+  if (!grid.isWalkable(start)) return [];
+
+  const queue: Cell[] = [start];
+  const visited = new Set<string>([grid.key(start)]);
+  const candidateCells: { position: Point; distance: number; score: number }[] = [];
+  for (let i = 0; i < queue.length; i++) {
+    const cell = queue[i];
+    const position = grid.center(cell);
+    const distance = Math.hypot(position.x - origin.x, position.y - origin.y);
+    if (distance >= 100 && distance <= 520 &&
+        position.x >= 32 && position.y >= 32 &&
+        position.x <= grid.width - 32 && position.y <= grid.height - 32) {
+      const noise = (((cell.x * 73856093) ^ (cell.y * 19349663) ^ (wave * 83492791)) >>> 0) % 27;
+      const preferredRadius = 195 + Math.min(2, wave - 1) * 20;
+      candidateCells.push({
+        position, distance,
+        score: Math.abs(distance - preferredRadius) + noise,
+      });
+    }
+    for (const step of CARDINAL) {
+      const next = {x:cell.x+step.x,y:cell.y+step.y};
+      const key = grid.key(next);
+      if (grid.isWalkable(next) && !visited.has(key)) {
+        visited.add(key);
+        queue.push(next);
+      }
+    }
+  }
+  candidateCells.sort((a,b) => a.score - b.score || a.position.y - b.position.y || a.position.x - b.position.x);
 
   const result: PlannedEnemy[] = [];
-  const usedCells = new Set<string>();
-  let candidateIndex = 0;
-
   for (const kind of kinds) {
-    let chosen: Point | null = null;
-    for (let attempt = 0; attempt < 180; attempt++) {
-      const index = candidateIndex++;
-      const radius = RADII[(index + wave) % RADII.length];
-      const angle = wave * 0.67 + index * GOLDEN_ANGLE;
-      const raw = {
-        x: origin.x + Math.cos(angle) * radius,
-        y: origin.y + Math.sin(angle) * radius,
-      };
-      if (raw.x < 32 || raw.y < 32 ||
-          raw.x >= grid.width - 32 || raw.y >= grid.height - 32) continue;
-
-      const cell = grid.cellAt(raw);
-      const key = grid.key(cell);
-      if (usedCells.has(key) || !grid.isWalkable(cell)) continue;
-      const point = grid.center(cell);
-      if (Math.hypot(point.x - origin.x, point.y - origin.y) < 100) continue;
-      if (result.some(other =>
-        Math.hypot(other.position.x - point.x, other.position.y - point.y) < 64)) continue;
-      if (!findPath(grid, origin, point)) continue;
-
-      chosen = point;
-      usedCells.add(key);
-      break;
-    }
-    if (!chosen) break;
-    result.push({ kind, position: chosen });
+    const candidate = candidateCells.find(item => !result.some(other =>
+      Math.hypot(other.position.x - item.position.x, other.position.y - item.position.y) < 70
+    ));
+    if (!candidate) break;
+    result.push({kind,position:{...candidate.position}});
+    const index = candidateCells.indexOf(candidate);
+    candidateCells.splice(index,1);
   }
   return result;
 }
