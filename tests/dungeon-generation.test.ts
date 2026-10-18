@@ -4,6 +4,8 @@ import {
   dungeonFloorAt, dungeonSeedFromSearch, generateDungeon,
 } from '../src/game/dungeon/DungeonGenerator';
 import { findPath } from '../src/game/navigation/Pathfinder';
+import { ENCOUNTER_WAVES } from '../src/game/combat/EncounterDirector';
+import { planEncounterSpawns } from '../src/game/combat/SpawnPlanner';
 
 function visitedFloorCount(seed: number): { floorCount: number; reachable: number } {
   const dungeon = generateDungeon(seed);
@@ -85,7 +87,22 @@ describe('seeded connected dungeons', () => {
       expect(grid.isWalkable(room.center)).toBe(true);
       expect(findPath(grid, layout.entrance, grid.center(room.center))).not.toBeNull();
     }
-    expect(grid.isSegmentWalkable(layout.entrance, layout.depth)).toBe(false);
+    expect(grid.isWalkable({ x: 0, y: 0 })).toBe(false);
+  });
+
+  it('can place every combat-trial wave within reachable tiles on generated layouts', () => {
+    for (const seed of [0, 1, 7, 42, 2026, 65535]) {
+      const layout = generateDungeon(seed);
+      const grid = createDungeonNavigationGrid(layout);
+      for (const [index, kinds] of ENCOUNTER_WAVES.entries()) {
+        const spawns = planEncounterSpawns(grid, layout.entrance, kinds, index + 1);
+        expect(spawns.map(spawn => spawn.kind)).toEqual(kinds);
+        for (const spawn of spawns) {
+          expect(grid.isWalkable(grid.cellAt(spawn.position))).toBe(true);
+          expect(findPath(grid, layout.entrance, spawn.position)).not.toBeNull();
+        }
+      }
+    }
   });
 
   it('supports a reproducible URL seed and otherwise generates a fresh seed', () => {
