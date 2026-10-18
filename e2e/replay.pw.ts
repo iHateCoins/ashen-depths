@@ -30,16 +30,17 @@ test('victory Replay Trial button receives an actual click/tap and restarts the 
     () => document.documentElement.dataset.ashenEncounter
   ), { timeout: 10_000 }).toBe('complete');
 
-  // This is where the visible Phaser child "REPLAY TRIAL" is rendered.
-  // Click/tap the *canvas*, not a DOM stand-in for the actual game input.
-  const bounds = await canvas.boundingBox();
-  expect(bounds).not.toBeNull();
-  const x = bounds!.x + bounds!.width / 2;
-  const y = bounds!.y + bounds!.height / 2 + 50;
+  // Tap the native on-screen control itself, not a simulated restart call.
+  const overlay = page.locator('#ashen-victory-overlay');
+  await expect(overlay).toBeVisible();
+  const button = overlay.getByRole('button', { name: 'REPLAY TRIAL' });
+  await expect(button).toBeVisible();
   if (test.info().project.name === 'desktop') {
-    await page.mouse.click(x, y);
+    await button.click();
   } else {
-    await page.touchscreen.tap(x, y);
+    const bounds = await button.boundingBox();
+    expect(bounds).not.toBeNull();
+    await page.touchscreen.tap(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
   }
 
   // Scene restart makes the trial's state countdown/wave 0; wave 1 begins later.
@@ -66,22 +67,24 @@ test('defeat Restart Expedition button also receives pointer events after scroll
     } };
     const scene = runtime.__ashenE2eGame?.scene.getScene('DungeonScene') as {
       health: { hp: number; defeated: boolean };
-      defeatOverlay: { setVisible: (value: boolean) => void };
+      defeatOverlay: { show: () => void };
     } | undefined;
     if (!scene) throw new Error('Local E2E scene is missing');
     scene.health.hp = 0;
     scene.health.defeated = true;
-    scene.defeatOverlay.setVisible(true);
+    scene.defeatOverlay.show();
   });
 
-  const bounds = await canvas.boundingBox();
-  expect(bounds).not.toBeNull();
-  const x = bounds!.x + bounds!.width / 2;
-  const y = bounds!.y + bounds!.height / 2 + 32;
+  const overlay = page.locator('#ashen-defeat-overlay');
+  await expect(overlay).toBeVisible();
+  const button = overlay.getByRole('button', { name: 'RESTART EXPEDITION' });
+  await expect(button).toBeVisible();
   if (test.info().project.name === 'desktop') {
-    await page.mouse.click(x, y);
+    await button.click();
   } else {
-    await page.touchscreen.tap(x, y);
+    const bounds = await button.boundingBox();
+    expect(bounds).not.toBeNull();
+    await page.touchscreen.tap(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
   }
 
   await expect.poll(() => page.evaluate(
