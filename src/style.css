@@ -129,3 +129,93 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
   .ashen-objective-title { font-size: 14px; }
   .ashen-objective-button { min-height: 36px; padding: 6px 12px; }
 }
+
+/* Expedition loot: native touch targets and a compact bag independent of camera zoom. */
+.ashen-bag-toggle {
+  position:fixed;right:max(12px,env(safe-area-inset-right));
+  bottom:calc(35px + env(safe-area-inset-bottom));z-index:1190;
+  border:1px solid #c9a878;border-radius:7px;padding:9px 14px;
+  background:#28383d;color:#f3dab3;font:600 14px Arial,sans-serif;
+  touch-action:manipulation;cursor:pointer;
+}
+.ashen-bag-toggle[hidden] {display:none;}
+.ashen-loot-nearby {
+  position:fixed;right:max(12px,env(safe-area-inset-right));
+  bottom:calc(86px + env(safe-area-inset-bottom));z-index:1190;
+  display:flex;flex-direction:column;align-items:center;gap:5px;
+  width:min(235px,calc(100vw - 24px));box-sizing:border-box;
+  padding:10px 12px;border:1px solid #937f63;border-radius:9px;
+  background:#142328f2;color:#d8dada;
+  box-shadow:0 5px 20px #0007;font:12px/1.35 Arial,sans-serif;
+  text-align:center;touch-action:manipulation;
+}
+.ashen-loot-nearby[hidden] {display:none;}
+.ashen-loot-title {font:600 15px Georgia,serif;}
+.ashen-loot-description {font-size:11px;color:#c2cbcc;}
+.ashen-loot-pickup {
+  min-height:40px;min-width:115px;padding:8px 14px;
+  background:#9e7447;border:1px solid #ddbb85;border-radius:6px;
+  color:#12191a;font:600 14px Arial,sans-serif;
+  touch-action:manipulation;cursor:pointer;
+}
+.ashen-loot-pickup:disabled {opacity:.6;cursor:default;}
+.ashen-bag-overlay {
+  position:fixed;inset:0;z-index:1880;display:flex;
+  align-items:center;justify-content:center;
+  padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right))
+    max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));
+  background:#091216e8;box-sizing:border-box;color:#eee0c7;
+  touch-action:auto;
+}
+.ashen-bag-overlay[hidden] {display:none;}
+.ashen-bag-panel {
+  width:min(700px,100%);height:min(580px,100%);min-height:0;
+  overflow-y:auto;overscroll-behavior:contain;
+  border:1px solid #947f5c;border-radius:12px;
+  background:#19272c;padding:14px 16px;box-sizing:border-box;
+  box-shadow:0 12px 38px #000c;font:14px/1.4 Arial,sans-serif;
+  -webkit-overflow-scrolling:touch;touch-action:pan-y;
+}
+.ashen-bag-header {display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.ashen-bag-header h2 {font:26px Georgia,serif;margin:0;}
+.ashen-bag-close,.ashen-bag-discard {
+  min-height:39px;border-radius:6px;padding:7px 13px;
+  border:1px solid #ab9571;color:#f1e0c2;background:#35464b;
+  font:600 13px Arial,sans-serif;touch-action:manipulation;cursor:pointer;
+}
+.ashen-bag-warning {color:#e2ad85;font-size:12px;margin:8px 0;}
+.ashen-bag-count {margin:8px 0;color:#cbd8d7;}
+.ashen-bag-list {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;}
+.ashen-bag-item {display:flex;justify-content:space-between;align-items:center;gap:8px;
+  background:#24343a;border:1px solid #506369;border-radius:6px;padding:9px;min-width:0;}
+.ashen-bag-item-details {display:flex;flex-direction:column;gap:3px;min-width:0;font-size:12px;}
+.ashen-bag-item-details strong {font-size:14px;overflow-wrap:anywhere;}
+.ashen-bag-item-details span {color:#b5c6c7;}
+.ashen-bag-empty {color:#b5c6c7;grid-column:1/-1;}
+.ashen-bag-toggle:focus-visible,.ashen-bag-close:focus-visible,
+.ashen-loot-pickup:focus-visible,.ashen-bag-discard:focus-visible {
+  outline:3px solid #f5d9a7;outline-offset:3px;
+}
+@media(max-width:600px) {
+  .ashen-bag-list {grid-template-columns:1fr;}
+  .ashen-bag-header h2 {font-size:21px;}
+}
+@media(max-height:430px) {
+  .ashen-bag-panel {padding:9px 12px;}
+  .ashen-loot-nearby {bottom:calc(74px + env(safe-area-inset-bottom));padding:7px;}
+  .ashen-bag-toggle {bottom:calc(30px + env(safe-area-inset-bottom));padding:7px 11px;}
+}
+
+.ashen-finish-run {
+  position:fixed;
+  left:50%;top:calc(10px + env(safe-area-inset-top));
+  transform:translateX(-50%);z-index:1220;
+  min-height:41px;padding:9px 15px;
+  border:1px solid #e6c38a;border-radius:8px;
+  background:#415947;color:#f6e1ae;
+  font:600 14px Arial,sans-serif;white-space:nowrap;
+  box-shadow:0 4px 15px #0009;
+  touch-action:manipulation;cursor:pointer;
+}
+.ashen-finish-run[hidden] {display:none;}
+.ashen-finish-run:focus-visible {outline:3px solid #ffe4aa;outline-offset:3px;}

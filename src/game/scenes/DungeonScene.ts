@@ -15,6 +15,8 @@ import { ExplorationTracker } from '../dungeon/ExplorationTracker';
 import { ExplorationView } from '../dungeon/ExplorationView';
 import { OptionalObjectiveDirector, type OptionalObjectiveKind } from '../dungeon/OptionalObjectiveDirector';
 import { OptionalObjectiveUI } from '../ui/OptionalObjectiveUI';
+import { ExpeditionLoot, type GroundLoot } from '../loot/ExpeditionLoot';
+import { LootUI } from '../ui/LootUI';
 
 const WORLD_WIDTH = 2304;
 const WORLD_HEIGHT = 1536;
@@ -53,8 +55,12 @@ export class DungeonScene extends Phaser.Scene {
   private optionalUi!: OptionalObjectiveUI;
   private objectiveMarkers = new Map<OptionalObjectiveKind, Phaser.GameObjects.Text>();
   private objectiveLabel!: Phaser.GameObjects.Text;
+  private loot!: ExpeditionLoot;
+  private lootUi!: LootUI;
+  private groundVisuals = new Map<string, Phaser.GameObjects.Container>();
   private victoryOverlay!: ResultOverlay;
   private kills = 0;
+  private finalized = false;
 
   constructor() { super('DungeonScene'); }
 
@@ -66,6 +72,8 @@ export class DungeonScene extends Phaser.Scene {
     this.grid = createDungeonNavigationGrid(this.dungeon);
     this.roomEncounters = new RoomEncounterDirector(this.dungeon, this.grid);
     this.optionalObjectives = new OptionalObjectiveDirector(this.dungeon, this.roomEncounters);
+    this.loot = new ExpeditionLoot(this.dungeon.seed);
+    this.groundVisuals.clear();
     this.renderDungeon();
     this.renderOptionalMarkers();
     // Scenes restart without rebuilding the TypeScript object; reset every run.
@@ -73,6 +81,7 @@ export class DungeonScene extends Phaser.Scene {
     this.combat = new AutoCombat();
     this.skills = new AutoSkillSystem();
     this.kills = 0;
+    this.finalized = false;
     this.enemies = [];
     this.enemyVisuals.clear();
     this.waypoints = [];
@@ -100,7 +109,7 @@ export class DungeonScene extends Phaser.Scene {
     this.cameras.main.setZoom(this.zoom);
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.health.defeated || this.roomEncounters.completed) return;
+      if (this.health.defeated || this.finalized || this.lootUi.isOpen) return;
       if (pointer.event instanceof MouseEvent && pointer.event.button !== 0) return;
       const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
       const x = Phaser.Math.Clamp(point.x, 24, this.grid.width - 24);
@@ -131,7 +140,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.add.text(14, 0, 'ASHEN DEPTHS · M03 / PR04', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.add.text(14, 0, 'ASHEN DEPTHS · M04 / PR01', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(32);
     this.dungeonSeedLabel = this.add.text(14, 0, `DUNGEON SEED: ${this.dungeon.seed}`, {
@@ -150,17 +159,20 @@ export class DungeonScene extends Phaser.Scene {
     // These are actual DOM buttons above the canvas. Phaser's interactive
     // Container children can be offset by the scrolling/zooming camera.
     this.optionalUi = new OptionalObjectiveUI(kind => this.activateOptionalObjective(kind));
+    this.lootUi = new LootUI(this.loot, id => this.pickupGroundLoot(id), id => this.discardBagItem(id));
     this.defeatOverlay = new ResultOverlay('defeat', () => this.scene.restart());
     this.victoryOverlay = new ResultOverlay('victory', () => this.scene.restart());
     const defeatOverlay = this.defeatOverlay;
     const victoryOverlay = this.victoryOverlay;
     const explorationView = this.explorationView;
     const optionalUi = this.optionalUi;
+    const lootUi = this.lootUi;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       defeatOverlay.destroy();
       victoryOverlay.destroy();
       explorationView.destroy();
       optionalUi.destroy();
+      lootUi.destroy();
     });
     this.debugButton = this.add.text(0, 8, 'DEBUG: OFF', {fontFamily:'Arial, sans-serif',fontSize:'14px',color:'#e3c99c',backgroundColor:'#243136',padding:{x:10,y:8}}).setScrollFactor(0).setDepth(110).setInteractive();
     this.debugButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); this.toggleDebug(); });
@@ -371,6 +383,58 @@ export class DungeonScene extends Phaser.Scene {
     }
   }
 
+
+  private showGroundLoot(drop: GroundLoot): void {
+    const color = drop.item.rarity === 'rare' ? 0xf0c779
+      : drop.item.rarity === 'magic' ? 0x8ebcff : 0xcfd4d1;
+    const glow = this.add.circle(0, 0, 14, color, 0.25)
+      .setStrokeStyle(2, color, 0.8);
+    const symbol = this.add.star(0, -5, 4, 5, 10, color, 0.95)
+      .setStrokeStyle(1, 0x161d20, 0.9);
+    const label = this.add.text(0, 24, drop.item.name, {
+      fontFamily: 'Arial, sans-serif', fontSize: '12px',
+      color: drop.item.rarity === 'rare' ? '#f6d590'
+        : drop.item.rarity === 'magic' ? '#a9cafa' : '#d8e1de',
+      stroke: '#11181a', strokeThickness: 3,
+    }).setOrigin(0.5);
+    // Fog's world depth is 24; ground loot remains concealed until seen.
+    const visual = this.add.container(drop.position.x, drop.position.y,
+      [glow, symbol, label]).setDepth(7);
+    this.groundVisuals.set(drop.id, visual);
+  }
+
+  private pickupGroundLoot(id: string): void {
+    if (this.health.defeated) return;
+    const result = this.loot.pickUp(id, this.movement.position,
+      (from, to) => this.grid.isSegmentWalkable(from, to));
+    if (result.status !== 'picked-up') {
+      if (result.status === 'full') {
+        this.showCombatText(this.movement.position, 'BAG FULL', '#ffaf8a');
+      }
+      this.refreshLootPrompt();
+      return;
+    }
+    this.groundVisuals.get(id)?.destroy();
+    this.groundVisuals.delete(id);
+    this.showCombatText(this.movement.position, 'ITEM COLLECTED', '#e4d3a4');
+    this.refreshLootPrompt();
+  }
+
+  private discardBagItem(id: string): void {
+    if (this.health.defeated) return;
+    const drop = this.loot.discard(id, this.movement.position);
+    if (drop) this.showGroundLoot(drop);
+    this.refreshLootPrompt();
+  }
+
+  private refreshLootPrompt(): void {
+    if (this.health.defeated) return;
+    this.lootUi.refresh(this.loot.nearby(this.movement.position,
+      (from, to) => this.grid.isSegmentWalkable(from, to)));
+    document.documentElement.dataset.ashenBagCount = String(this.loot.bag.length);
+    document.documentElement.dataset.ashenGroundCount = String(this.loot.ground.length);
+  }
+
   private updateObjectiveStatus(): void {
     const room = this.exploration.currentRoom(this.movement.position);
     const guardianAlive = this.roomEncounters.guardianAlive(this.enemies);
@@ -384,7 +448,7 @@ export class DungeonScene extends Phaser.Scene {
     } else {
       objective = 'EXPLORE · FIND THE DEEP CHAMBER';
     }
-    this.objectiveLabel.setText(`${objective}\n${alive} enemies alive · ${localHostiles} from this room\nSide objectives ${this.optionalObjectives.claimedCount}/${this.optionalObjectives.totalCount} · Basic +${this.combat.bonusDamage}`);
+    this.objectiveLabel.setText(`${objective}\n${alive} enemies alive · ${localHostiles} from this room\nBag ${this.loot.bag.length}/${this.loot.capacity} · Side ${this.optionalObjectives.claimedCount}/${this.optionalObjectives.totalCount} · Basic +${this.combat.bonusDamage}`);
     document.documentElement.dataset.ashenEncounter = this.roomEncounters.completed ? 'complete' : 'explore';
     document.documentElement.dataset.ashenGuardianAlive = String(guardianAlive);
     document.documentElement.dataset.ashenEnemyCount = String(alive);
@@ -429,12 +493,17 @@ export class DungeonScene extends Phaser.Scene {
         visual.destroy();
         this.enemyVisuals.delete(enemy.id);
         this.kills++;
+        const placement = this.roomEncounters.placements.find(spawn => spawn.id === enemy.id);
+        const drop = this.loot.dropForEnemy(
+          enemy.id, enemy.kind, placement?.guardian ?? false, enemy.position,
+        );
+        if (drop) this.showGroundLoot(drop);
       }
     }
   }
 
   update(_time: number, delta: number): void {
-    if(this.health.defeated || this.roomEncounters.completed) return;
+    if(this.health.defeated || this.finalized || this.lootUi.isOpen) return;
     const oldX = this.movement.position.x;
     const oldY = this.movement.position.y;
     this.movement.update(delta / 1000);
@@ -498,16 +567,24 @@ export class DungeonScene extends Phaser.Scene {
     }
     this.healthLabel.setText(`HP: ${this.health.hp} / ${this.health.maxHp}`);
     if (!this.health.defeated && this.roomEncounters.update(this.movement.position, this.enemies)) {
-      this.optionalUi.hide();
-      this.victoryOverlay.show();
-      this.movement.stop();
-      this.waypoints = [];
-      this.marker.setVisible(false);
+      // Winning is not the same as extracting. Let the player pick up Warden
+      // loot and inspect the bag before deliberately finishing the run.
+      this.showCombatText(this.movement.position, 'WARDEN DEFEATED', '#f5d7a4');
+      this.lootUi.enableFinish(() => {
+        this.finalized = true;
+        this.optionalUi.hide();
+        this.victoryOverlay.show();
+        this.movement.stop();
+        this.waypoints = [];
+        this.marker.setVisible(false);
+      });
     }
     this.updateObjectiveStatus();
     this.refreshOptionalPrompt();
+    this.refreshLootPrompt();
     if(this.health.defeated) {
       this.movement.stop();this.waypoints=[];this.marker.setVisible(false);
+      this.lootUi.hideForResult();
       this.defeatOverlay.show();
     }
     if (this.debug.visible) this.redrawRoute();
