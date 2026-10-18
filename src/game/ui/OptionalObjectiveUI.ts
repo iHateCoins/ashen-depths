@@ -11,6 +11,7 @@ export class OptionalObjectiveUI {
   private readonly description: HTMLElement;
   private readonly button: HTMLButtonElement;
   private currentId: OptionalObjectiveKind | null = null;
+  private lastKey = '';
 
   constructor(private readonly onActivate: (id: OptionalObjectiveKind) => void) {
     const root = document.createElement('aside');
@@ -46,6 +47,9 @@ export class OptionalObjectiveUI {
       this.hide();
       return;
     }
+    const key = `${prompt.objective.id}:${prompt.availability}:${prompt.remainingGuards}`;
+    if (key === this.lastKey && !this.root.hidden) return;
+    this.lastKey = key;
     this.currentId = prompt.objective.id;
     this.root.hidden = false;
     this.title.textContent = prompt.objective.label;
@@ -67,7 +71,9 @@ export class OptionalObjectiveUI {
   }
 
   hide(): void {
+    if (this.root.hidden) return;
     this.currentId = null;
+    this.lastKey = '';
     this.root.hidden = true;
   }
 
