@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AutoCombat, type Enemy } from '../src/game/combat/AutoCombat';
-import { AutoSkillSystem, CINDER_BURST, FROST_BLOOM, ASH_LANCE, SKILL_SLOT_LIMIT } from '../src/game/combat/AutoSkillSystem';
+import { AutoSkillSystem, CINDER_BURST, FROST_BLOOM, ASH_LANCE, SKILL_SLOT_LIMIT, SKILL_SUPPORTS } from '../src/game/combat/AutoSkillSystem';
 
 const enemy = (id: number, x: number, y = 0, hp = 100): Enemy =>
   ({ id, position: { x, y }, hp, maxHp: 100 });
@@ -94,6 +94,82 @@ describe('automatic skill selection', () => {
     system.setEquipped([CINDER_BURST]);
     expect(() => system.setEquipped([{ ...CINDER_BURST, damage: -1 }])).toThrow(/Invalid/);
     expect(system.equipped.map(skill => skill.id)).toEqual([CINDER_BURST.id]);
+  });
+
+  it('applies focused power to actual hit damage and narrower enemy coverage', () => {
+    const system = new AutoSkillSystem();
+    system.setSupport(CINDER_BURST.id, 'focused-power');
+    const stats = system.effectiveStats(CINDER_BURST.id);
+    expect(stats).toMatchObject({
+      supportId: 'focused-power', damage: 47, radius: 79,
+      range: 250, cooldownSeconds: 4,
+    });
+    const targets = [enemy(1, 40), enemy(2, 130)];
+    const casts = system.update({ x: 0, y: 0 }, targets, 0.016);
+    expect(casts).toHaveLength(1);
+    expect(casts[0].radius).toBe(79);
+    expect(casts[0].hits).toEqual([{ enemyId: 1, damage: 47 }]);
+    expect(targets.map(target => target.hp)).toEqual([53, 100]);
+  });
+
+  it('expansive blast actually hits a larger cluster at reduced damage', () => {
+    const system = new AutoSkillSystem();
+    system.setSupport(CINDER_BURST.id, 'expansive-blast');
+    expect(system.effectiveStats(CINDER_BURST.id)).toMatchObject({ damage: 28, radius: 158 });
+    const targets = [enemy(1, 40), enemy(2, 185)];
+    const casts = system.update({ x: 0, y: 0 }, targets, 0.016);
+    expect(casts[0].hits.map(hit => hit.enemyId)).toEqual([1, 2]);
+    expect(targets.map(target => target.hp)).toEqual([72, 72]);
+  });
+
+  it('swift casting reduces cooldown while reducing real damage', () => {
+    const system = new AutoSkillSystem();
+    system.setSupport(CINDER_BURST.id, 'swift-casting');
+    const targets = [enemy(1, 60, 0, 200)];
+    expect(system.effectiveStats(CINDER_BURST.id)).toMatchObject({
+      damage: 28, radius: 105, cooldownSeconds: 2.8,
+    });
+    expect(system.update({ x: 0, y: 0 }, targets, 0.016)[0].hits[0].damage).toBe(28);
+    expect(system.remaining(CINDER_BURST.id)).toBe(2.8);
+  });
+
+  it('supports are unique across equipped skills and bad changes are atomic', () => {
+    const system = new AutoSkillSystem([CINDER_BURST, FROST_BLOOM]);
+    expect(SKILL_SUPPORTS).toHaveLength(3);
+    system.setSupport(CINDER_BURST.id, 'focused-power');
+    expect(() => system.setSupport(FROST_BLOOM.id, 'focused-power')).toThrow(/already equipped/);
+    expect(() => system.setSupport(FROST_BLOOM.id, 'missing')).toThrow(/Unknown support/);
+    expect(() => system.setSupport('ash-lance', 'swift-casting')).toThrow(/not equipped/);
+    expect(system.supportFor(FROST_BLOOM.id)).toBeNull();
+    expect(system.supportFor(CINDER_BURST.id)?.id).toBe('focused-power');
+    system.setSupport(FROST_BLOOM.id, 'swift-casting');
+    system.setSupport(CINDER_BURST.id, null);
+    system.setSupport(CINDER_BURST.id, 'swift-casting');
+  });
+
+  it('removes modifiers on unequip, preserves consumed cooldown, resets next run', () => {
+    const system = new AutoSkillSystem([CINDER_BURST, FROST_BLOOM]);
+    system.setSupport(CINDER_BURST.id, 'swift-casting');
+    system.update({ x: 0, y: 0 }, [enemy(1, 80)], 0.016);
+    const consumed = system.remaining(CINDER_BURST.id);
+    expect(consumed).toBe(2.8);
+    system.setEquipped([FROST_BLOOM]);
+    expect(system.supportFor(CINDER_BURST.id)).toBeNull();
+    system.setEquipped([CINDER_BURST, FROST_BLOOM]);
+    expect(system.effectiveStats(CINDER_BURST.id).supportId).toBeNull();
+    expect(system.remaining(CINDER_BURST.id)).toBe(consumed);
+    expect(new AutoSkillSystem().effectiveStats(CINDER_BURST.id).supportId).toBeNull();
+  });
+
+  it('line of sight remains enforced after area and damage modifiers', () => {
+    const system = new AutoSkillSystem();
+    system.setSupport(CINDER_BURST.id, 'expansive-blast');
+    const targets = [enemy(1, 50), enemy(2, 170)];
+    const clear = (from: { x: number }, to: { x: number }) =>
+      !((from.x < 100 && to.x >= 100) || (from.x >= 100 && to.x < 100));
+    const casts = system.update({ x: 0, y: 0 }, targets, 0.016, clear);
+    expect(casts[0].hits.map(hit => hit.enemyId)).toEqual([1]);
+    expect(targets[1].hp).toBe(100);
   });
 
   it('prevents basic attacks through obstructions', () => {
