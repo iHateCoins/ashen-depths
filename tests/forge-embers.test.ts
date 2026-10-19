@@ -110,13 +110,14 @@ describe('repeatable Forge Ember discovery and gear reforging', () => {
     const store = new MemoryStorage();
     const stash = new SecuredStash(store);
     stash.secureExpedition([item('common', 'common'), item('magic', 'magic')], [], 2);
+    const next = new SecuredStash(store);
     const snapshot = store.getItem(STASH_STORAGE_KEY);
-    expect(stash.reforgeItem(stash.items[0].id, 0)).toBe(false);
-    expect(stash.reforgeItem('not-in-stash', 0)).toBe(false);
-    expect(stash.reforgeItem(stash.items[1].id, -1)).toBe(false);
-    expect(stash.reforgeItem(stash.items[1].id, 2)).toBe(false);
+    expect(next.reforgeItem(next.items[0].id, 0)).toBe(false);
+    expect(next.reforgeItem('not-in-stash', 0)).toBe(false);
+    expect(next.reforgeItem(next.items[1].id, -1)).toBe(false);
+    expect(next.reforgeItem(next.items[1].id, 2)).toBe(false);
     expect(store.getItem(STASH_STORAGE_KEY)).toBe(snapshot);
-    expect(stash.forgeEmbers).toBe(2);
+    expect(next.forgeEmbers).toBe(2);
   });
 
   it('failed reforge writes, stale tabs and zero currency never change equipment', () => {
