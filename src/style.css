@@ -556,3 +556,37 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
     padding:6px 10px;
   }
 }
+
+/* Warden completion stays inside the dock, directly below any uncollected
+   rare drop, instead of covering its pickup control with a fixed CTA. */
+.ashen-interaction-dock > .ashen-finish-run {
+  position:relative;
+  inset:auto;
+  left:auto;
+  top:auto;
+  right:auto;
+  bottom:auto;
+  transform:none;
+  flex:none;
+  width:100%;
+  box-sizing:border-box;
+  margin:0;
+  max-width:none;
+  pointer-events:auto;
+}
+.ashen-interaction-dock > .ashen-finish-run[hidden] {display:none;}
+.ashen-interaction-dock > .ashen-finish-warning {
+  position:relative;
+  inset:auto;
+  left:auto;
+  right:auto;
+  top:auto;
+  bottom:auto;
+  transform:none;
+  width:100%;
+  box-sizing:border-box;
+  flex:none;
+  margin:0;
+  pointer-events:auto;
+}
+.ashen-interaction-dock > .ashen-finish-warning[hidden] {display:none;}
