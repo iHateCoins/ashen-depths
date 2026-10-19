@@ -1,5 +1,5 @@
 import type { LootItem } from './ExpeditionLoot';
-import { isValidUnlockId } from '../combat/SkillProgression';
+import { isValidUnlockId, UNLOCK_CHOICES } from '../combat/SkillProgression';
 
 export const STASH_STORAGE_KEY = 'ashen-depths-stash-v1';
 export const STASH_CAPACITY = 500;
@@ -58,7 +58,7 @@ function parseSnapshot(raw: string): StashSnapshot | null {
         !Array.isArray(data.items) || data.items.length > STASH_CAPACITY ||
         !data.items.every(validItem) ||
         (data.unlocks !== undefined && (!Array.isArray(data.unlocks) ||
-          data.unlocks.length > 6 || !data.unlocks.every(isValidUnlockId) ||
+          data.unlocks.length > UNLOCK_CHOICES.length || !data.unlocks.every(isValidUnlockId) ||
           new Set(data.unlocks).size !== data.unlocks.length))) return null;
     const ids = data.items.map(item => item.id);
     if (new Set(ids).size !== ids.length) return null;
