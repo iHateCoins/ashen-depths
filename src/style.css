@@ -644,3 +644,26 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
   .ashen-skill-equip{flex:none;min-width:103px;padding:7px 8px;font-size:11px;}
   .ashen-skills-toggle{padding:8px 11px;font-size:12px;}
 }
+
+/* M05 / PR02: skill supports belong to individual equipped skills. */
+.ashen-skill-support-detail{color:#c8e6ca!important;font-size:12px;}
+.ashen-skill-support-row{
+  display:flex;flex-direction:column;gap:5px;color:#d8def0;
+  font:600 12px Arial,sans-serif;min-width:0;
+}
+.ashen-skill-support-select{
+  width:100%;min-width:0;max-width:100%;min-height:42px;
+  padding:7px 9px;box-sizing:border-box;
+  color:#f0e9df;background:#343b57;
+  border:1px solid #a4aace;border-radius:7px;
+  font:13px Arial,sans-serif;touch-action:manipulation;
+}
+.ashen-skill-support-select:disabled{opacity:.65;}
+.ashen-skill-support-select:focus-visible{
+  outline:3px solid #f5d9a7;outline-offset:3px;
+}
+@media(max-width:600px) {
+  .ashen-skill-card{flex-wrap:wrap;}
+  .ashen-skill-details{flex:1 1 calc(100% - 126px);}
+  .ashen-skill-support-row{width:100%;flex:1 1 100%;}
+}

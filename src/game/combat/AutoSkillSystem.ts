@@ -49,11 +49,56 @@ export const ASH_LANCE: AutoSkillDefinition = {
 export const ACTIVE_SKILLS: readonly AutoSkillDefinition[] = [CINDER_BURST, FROST_BLOOM, ASH_LANCE];
 
 /**
+ * Each support is a trade-off, not a free upgrade. At most one support is
+ * attached to each equipped active skill, and each prototype support may be
+ * attached to only one skill in the loadout.
+ */
+export interface SkillSupportDefinition {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  readonly damageMultiplier: number;
+  readonly radiusMultiplier: number;
+  readonly cooldownMultiplier: number;
+}
+
+export const SKILL_SUPPORTS: readonly SkillSupportDefinition[] = [
+  {
+    id: 'focused-power',
+    name: 'Focused Power',
+    description: '+35% damage, -25% area',
+    damageMultiplier: 1.35, radiusMultiplier: 0.75, cooldownMultiplier: 1,
+  },
+  {
+    id: 'expansive-blast',
+    name: 'Expansive Blast',
+    description: '+50% area, -20% damage',
+    damageMultiplier: 0.8, radiusMultiplier: 1.5, cooldownMultiplier: 1,
+  },
+  {
+    id: 'swift-casting',
+    name: 'Swift Casting',
+    description: '-30% cooldown, -20% damage',
+    damageMultiplier: 0.8, radiusMultiplier: 1, cooldownMultiplier: 0.7,
+  },
+];
+
+export interface EffectiveSkillStats {
+  readonly skillId: string;
+  readonly supportId: string | null;
+  readonly damage: number;
+  readonly radius: number;
+  readonly range: number;
+  readonly cooldownSeconds: number;
+}
+
+/**
  * Skill logic is framework-independent. The scene owns presentation;
  * equipped skills only return casts and mutate enemy HP.
  */
 export class AutoSkillSystem {
   private cooldowns = new Map<string, number>();
+  private supports = new Map<string, string>();
   /** Additive damage granted by worn equipment, never manually cast. */
   bonusDamage = 0;
   private equippedSkills: AutoSkillDefinition[];
@@ -73,12 +118,51 @@ export class AutoSkillSystem {
     // Retain cooldowns when a skill is temporarily removed. Re-equipping it
     // must not provide an instant cast by resetting a previously used skill.
     for (const id of ids) if (!this.cooldowns.has(id)) this.cooldowns.set(id, 0);
+    for (const id of this.supports.keys()) if (!ids.has(id)) this.supports.delete(id);
     this.equippedSkills = [...equipped];
   }
 
   constructor(equipped: readonly AutoSkillDefinition[] = [CINDER_BURST]) {
     this.equippedSkills = [];
     this.setEquipped(equipped);
+  }
+
+  supportFor(skillId: string): SkillSupportDefinition | null {
+    const id = this.supports.get(skillId);
+    return SKILL_SUPPORTS.find(support => support.id === id) ?? null;
+  }
+
+  /** Validate the whole support assignment before mutating it. */
+  setSupport(skillId: string, supportId: string | null): void {
+    if (!this.equippedSkills.some(skill => skill.id === skillId)) {
+      throw new Error(`Skill is not equipped: ${skillId}`);
+    }
+    if (supportId !== null) {
+      if (!SKILL_SUPPORTS.some(support => support.id === supportId)) {
+        throw new Error(`Unknown support: ${supportId}`);
+      }
+      if ([...this.supports].some(([owner, id]) => owner !== skillId && id === supportId)) {
+        throw new Error(`Support already equipped: ${supportId}`);
+      }
+      this.supports.set(skillId, supportId);
+    } else {
+      this.supports.delete(skillId);
+    }
+    // Changing supports never clears a consumed cooldown.
+  }
+
+  effectiveStats(skillId: string): EffectiveSkillStats {
+    const skill = this.equippedSkills.find(item => item.id === skillId);
+    if (!skill) throw new Error(`Skill is not equipped: ${skillId}`);
+    const support = this.supportFor(skillId);
+    return {
+      skillId,
+      supportId: support?.id ?? null,
+      damage: Math.max(1, Math.round((skill.damage + this.bonusDamage) * (support?.damageMultiplier ?? 1))),
+      radius: Math.max(1, Math.round(skill.radius * (support?.radiusMultiplier ?? 1))),
+      range: skill.range,
+      cooldownSeconds: Math.round(skill.cooldownSeconds * (support?.cooldownMultiplier ?? 1) * 100) / 100,
+    };
   }
 
   remaining(skillId: string): number {
@@ -91,6 +175,7 @@ export class AutoSkillSystem {
     const casts: SkillCast[] = [];
 
     for (const skill of this.equipped) {
+      const stats = this.effectiveStats(skill.id);
       const elapsed = Math.max(0, this.remaining(skill.id) - step);
       const remaining = elapsed < 1e-8 ? 0 : elapsed;
       this.cooldowns.set(skill.id, remaining);
@@ -104,12 +189,12 @@ export class AutoSkillSystem {
       for (const enemy of enemies) {
         if (enemy.hp <= 0) continue;
         const distance = Math.hypot(enemy.position.x - player.x, enemy.position.y - player.y);
-        if (distance > skill.range || !clear(player, enemy.position)) continue;
+        if (distance > stats.range || !clear(player, enemy.position)) continue;
 
         let count = 0;
         for (const nearby of enemies) {
           if (nearby.hp > 0 &&
-              Math.hypot(nearby.position.x - enemy.position.x, nearby.position.y - enemy.position.y) <= skill.radius &&
+              Math.hypot(nearby.position.x - enemy.position.x, nearby.position.y - enemy.position.y) <= stats.radius &&
               clear(enemy.position, nearby.position)) count++;
         }
 
@@ -127,14 +212,14 @@ export class AutoSkillSystem {
       const hits: SkillHit[] = [];
       for (const enemy of enemies) {
         if (enemy.hp <= 0) continue;
-        if (Math.hypot(enemy.position.x - center.x, enemy.position.y - center.y) > skill.radius ||
+        if (Math.hypot(enemy.position.x - center.x, enemy.position.y - center.y) > stats.radius ||
             !clear(center, enemy.position)) continue;
-        const damage = skill.damage + this.bonusDamage;
+        const damage = stats.damage;
         enemy.hp = Math.max(0, enemy.hp - damage);
         hits.push({ enemyId: enemy.id, damage });
       }
-      this.cooldowns.set(skill.id, skill.cooldownSeconds);
-      casts.push({ skillId: skill.id, targetId: best.id, center, radius: skill.radius, hits });
+      this.cooldowns.set(skill.id, stats.cooldownSeconds);
+      casts.push({ skillId: skill.id, targetId: best.id, center, radius: stats.radius, hits });
     }
     return casts;
   }
