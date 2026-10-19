@@ -69,6 +69,7 @@ async function expectNoDockOverlap(page: Page): Promise<void> {
     const stash = document.getElementById('ashen-stash-toggle')!.getBoundingClientRect();
     const loot = document.getElementById('ashen-loot-nearby')!.getBoundingClientRect();
     const extract = document.getElementById('ashen-extraction-panel')!.getBoundingClientRect();
+    const objective = document.getElementById('ashen-optional-objective')!.getBoundingClientRect();
     const root = document.getElementById('ashen-interaction-dock')!;
     return {
       dock: { x: dock.x, y: dock.y, bottom: dock.bottom, right: dock.right },
@@ -76,8 +77,13 @@ async function expectNoDockOverlap(page: Page): Promise<void> {
       stashTop: stash.top,
       loot: { width: loot.width, height: loot.height },
       extract: { width: extract.width, height: extract.height },
+      objective: { width: objective.width, height: objective.height },
       active: root.dataset.active,
-      visiblePanels: [loot.width > 0 && loot.height > 0, extract.width > 0 && extract.height > 0]
+      visiblePanels: [
+        loot.width > 0 && loot.height > 0,
+        objective.width > 0 && objective.height > 0,
+        extract.width > 0 && extract.height > 0,
+      ]
         .filter(Boolean).length,
       viewport: { width: innerWidth, height: innerHeight },
     };
