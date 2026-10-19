@@ -2,6 +2,15 @@ import type { Point } from '../movement/MovementController';
 import type { Enemy } from './AutoCombat';
 
 export type SkillDamageType = 'attack' | 'spell';
+/** Area blasts, piercing lines and capped enemy-to-enemy chains. */
+export type SkillPattern = 'area' | 'pierce' | 'chain';
+
+export function skillPatternLabel(skill: AutoSkillDefinition, radius: number): string {
+  const pattern = skill.pattern ?? 'area';
+  if (pattern === 'pierce') return `${radius}px half-width · pierces enemies`;
+  if (pattern === 'chain') return `${radius}px jump range · up to ${skill.maxTargets ?? 3} foes`;
+  return `${radius}px area`;
+}
 
 export interface AutoSkillDefinition {
   /** Determines which equipped item bonuses increase the skill damage. */
@@ -12,6 +21,9 @@ export interface AutoSkillDefinition {
   readonly radius: number;
   readonly damage: number;
   readonly cooldownSeconds: number;
+  readonly pattern?: SkillPattern;
+  /** Only meaningful for chain-pattern skills. */
+  readonly maxTargets?: number;
 }
 
 export interface SkillHit {
@@ -24,6 +36,9 @@ export interface SkillCast {
   targetId: number;
   center: Point;
   radius: number;
+  /** Used by the scene to draw a line or chain rather than an AoE disk. */
+  pattern: SkillPattern;
+  path?: Point[];
   hits: SkillHit[];
 }
 
@@ -57,8 +72,23 @@ export const CRESCENT_CLEAVE: AutoSkillDefinition = {
   range: 165, radius: 90, damage: 45, cooldownSeconds: 3.6,
 };
 
+/** Physical piercing volley: enemies behind the target can also be hit. */
+export const PIERCING_VOLLEY: AutoSkillDefinition = {
+  id: 'piercing-volley', name: 'Piercing Volley', type: 'attack',
+  pattern: 'pierce', range: 280, radius: 28,
+  damage: 38, cooldownSeconds: 3.8,
+};
+
+/** Magical lightning arc: jumps at most three times, losing 20% per hop. */
+export const ARC_RELAY: AutoSkillDefinition = {
+  id: 'arc-relay', name: 'Arc Relay', type: 'spell',
+  pattern: 'chain', maxTargets: 3, range: 270, radius: 155,
+  damage: 45, cooldownSeconds: 5.2,
+};
+
 export const ACTIVE_SKILLS: readonly AutoSkillDefinition[] = [
   CINDER_BURST, FROST_BLOOM, ASH_LANCE, CRESCENT_CLEAVE,
+  PIERCING_VOLLEY, ARC_RELAY,
 ];
 
 /**
@@ -127,6 +157,9 @@ export class AutoSkillSystem {
     for (const skill of equipped) {
       if (ids.has(skill.id)) throw new Error(`Duplicate active skill: ${skill.id}`);
       if (!['attack', 'spell'].includes(skill.type) ||
+          (skill.pattern !== undefined && !(['area','pierce','chain'] as string[]).includes(skill.pattern)) ||
+          (skill.maxTargets !== undefined && (!Number.isInteger(skill.maxTargets) ||
+            skill.maxTargets < 1 || skill.maxTargets > 8)) ||
           !(skill.range > 0 && skill.radius > 0 && skill.damage > 0 && skill.cooldownSeconds > 0)) {
         throw new Error(`Invalid auto skill definition: ${skill.id}`);
       }
@@ -188,6 +221,10 @@ export class AutoSkillSystem {
     return this.cooldowns.get(skillId) ?? 0;
   }
 
+  /**
+   * Deterministic automatic targeting: favor most potential hits, then nearest
+   * primary, then stable enemy ID. All patterns obey line-of-sight.
+   */
   update(player: Point, enemies: Enemy[], deltaSeconds: number, clear: LineOfSight = () => true): SkillCast[] {
     if (!Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return [];
     const step = Math.min(deltaSeconds, 0.1);
@@ -195,51 +232,114 @@ export class AutoSkillSystem {
 
     for (const skill of this.equipped) {
       const stats = this.effectiveStats(skill.id);
+      const pattern = skill.pattern ?? 'area';
       const elapsed = Math.max(0, this.remaining(skill.id) - step);
       const remaining = elapsed < 1e-8 ? 0 : elapsed;
       this.cooldowns.set(skill.id, remaining);
       if (remaining > 0) continue;
 
-      // Prefer clusters, then shorter distance, then stable enemy ID.
-      // This makes an area skill useful without manual targeting.
-      let best: Enemy | null = null;
-      let bestCount = -1;
+      const eligible = enemies.filter(enemy => enemy.hp > 0 &&
+        Math.hypot(enemy.position.x - player.x, enemy.position.y - player.y) <= stats.range &&
+        clear(player, enemy.position));
+
+      let primary: Enemy | null = null;
+      let chosen: Enemy[] = [];
       let bestDistance = Infinity;
-      for (const enemy of enemies) {
-        if (enemy.hp <= 0) continue;
+      for (const enemy of eligible) {
         const distance = Math.hypot(enemy.position.x - player.x, enemy.position.y - player.y);
-        if (distance > stats.range || !clear(player, enemy.position)) continue;
-
-        let count = 0;
-        for (const nearby of enemies) {
-          if (nearby.hp > 0 &&
-              Math.hypot(nearby.position.x - enemy.position.x, nearby.position.y - enemy.position.y) <= stats.radius &&
-              clear(enemy.position, nearby.position)) count++;
-        }
-
-        if (count > bestCount ||
-            (count === bestCount && (distance < bestDistance ||
-              (distance === bestDistance && enemy.id < (best?.id ?? Infinity))))) {
-          best = enemy;
-          bestCount = count;
+        const targets = pattern === 'pierce'
+          ? this.piercingTargets(player, enemy.position, stats.range, stats.radius, enemies, clear)
+          : pattern === 'chain'
+            ? this.chainTargets(enemy, enemies, stats.radius, skill.maxTargets ?? 3, clear)
+            : enemies.filter(other => other.hp > 0 &&
+              Math.hypot(other.position.x - enemy.position.x,
+                other.position.y - enemy.position.y) <= stats.radius &&
+              clear(enemy.position, other.position));
+        if (targets.length > chosen.length ||
+            (targets.length === chosen.length && (distance < bestDistance ||
+              (distance === bestDistance && enemy.id < (primary?.id ?? Infinity))))) {
+          primary = enemy;
+          chosen = targets;
           bestDistance = distance;
         }
       }
-      if (!best) continue;
-
-      const center = { ...best.position };
+      if (!primary) continue;
+      const center = { ...primary.position };
       const hits: SkillHit[] = [];
-      for (const enemy of enemies) {
+      for (const [index, enemy] of chosen.entries()) {
         if (enemy.hp <= 0) continue;
-        if (Math.hypot(enemy.position.x - center.x, enemy.position.y - center.y) > stats.radius ||
-            !clear(center, enemy.position)) continue;
-        const damage = stats.damage;
+        // Arc Relay's later links deal 80% and 60% of the first hit.
+        const damage = pattern === 'chain'
+          ? Math.max(1, Math.round(stats.damage * (1 - 0.2 * index)))
+          : stats.damage;
         enemy.hp = Math.max(0, enemy.hp - damage);
         hits.push({ enemyId: enemy.id, damage });
       }
+
+      let path: Point[] | undefined;
+      if (pattern === 'pierce') {
+        const len = Math.hypot(center.x - player.x, center.y - player.y);
+        const dx = len > 0 ? (center.x - player.x) / len : 1;
+        const dy = len > 0 ? (center.y - player.y) / len : 0;
+        path = [{ ...player }, {
+          x: player.x + dx * stats.range, y: player.y + dy * stats.range,
+        }];
+      } else if (pattern === 'chain') {
+        path = chosen.map(enemy => ({ ...enemy.position }));
+      }
       this.cooldowns.set(skill.id, stats.cooldownSeconds);
-      casts.push({ skillId: skill.id, targetId: best.id, center, radius: stats.radius, hits });
+      casts.push({
+        skillId: skill.id, targetId: primary.id, center, radius: stats.radius,
+        pattern, ...(path ? { path } : {}), hits,
+      });
     }
     return casts;
+  }
+
+  /** A straight ray with an adjustable half-width; no through-wall damage. */
+  private piercingTargets(
+    origin: Point, aim: Point, range: number, width: number,
+    enemies: readonly Enemy[], clear: LineOfSight,
+  ): Enemy[] {
+    const length = Math.hypot(aim.x - origin.x, aim.y - origin.y);
+    const dx = length > 0 ? (aim.x - origin.x) / length : 1;
+    const dy = length > 0 ? (aim.y - origin.y) / length : 0;
+    return enemies.filter(enemy => {
+      if (enemy.hp <= 0 || !clear(origin, enemy.position)) return false;
+      const x = enemy.position.x - origin.x;
+      const y = enemy.position.y - origin.y;
+      const along = x * dx + y * dy;
+      const across = Math.abs(x * dy - y * dx);
+      return along >= -1e-8 && along <= range && across <= width;
+    }).sort((a, b) => {
+      const da = (a.position.x - origin.x) * dx + (a.position.y - origin.y) * dy;
+      const db = (b.position.x - origin.x) * dx + (b.position.y - origin.y) * dy;
+      return da - db || a.id - b.id;
+    });
+  }
+
+  /** Never revisit a link, and never jump through walls. */
+  private chainTargets(
+    first: Enemy, enemies: readonly Enemy[], jumpRange: number,
+    maximum: number, clear: LineOfSight,
+  ): Enemy[] {
+    const visited: Enemy[] = [first];
+    const used = new Set([first.id]);
+    while (visited.length < maximum) {
+      const from = visited[visited.length - 1];
+      const candidates = enemies.filter(enemy =>
+        enemy.hp > 0 && !used.has(enemy.id) &&
+        Math.hypot(enemy.position.x - from.position.x,
+          enemy.position.y - from.position.y) <= jumpRange &&
+        clear(from.position, enemy.position));
+      candidates.sort((a, b) =>
+        Math.hypot(a.position.x - from.position.x, a.position.y - from.position.y) -
+        Math.hypot(b.position.x - from.position.x, b.position.y - from.position.y) || a.id - b.id);
+      if (!candidates.length) break;
+      const next = candidates[0];
+      used.add(next.id);
+      visited.push(next);
+    }
+    return visited;
   }
 }

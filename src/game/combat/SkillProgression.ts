@@ -1,4 +1,4 @@
-import { ACTIVE_SKILLS, CINDER_BURST, SKILL_SUPPORTS } from './AutoSkillSystem';
+import { ACTIVE_SKILLS, CINDER_BURST, SKILL_SUPPORTS, skillPatternLabel } from './AutoSkillSystem';
 
 export type RewardSource = 'cache' | 'warden';
 
@@ -12,7 +12,7 @@ export interface UnlockChoice {
 export const UNLOCK_CHOICES: readonly UnlockChoice[] = [
   ...ACTIVE_SKILLS.filter(skill => skill.id !== CINDER_BURST.id).map(skill => ({
     id: `skill:${skill.id}`, label: skill.name,
-    description: `${skill.type.toUpperCase()} · ${skill.type === 'attack' ? 'Attack Power' : 'Spell Power'} scaling · New auto-casting skill · ${skill.damage} damage · ${skill.cooldownSeconds}s cooldown`,
+    description: `${skill.type.toUpperCase()} · ${skill.type === 'attack' ? 'Attack Power' : 'Spell Power'} scaling · New auto-casting skill · ${skill.damage} damage · ${skillPatternLabel(skill, skill.radius)} · ${skill.cooldownSeconds}s cooldown`,
     kind: 'skill' as const,
   })),
   ...SKILL_SUPPORTS.map(support => ({

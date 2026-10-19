@@ -171,7 +171,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M05 / PR04', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M05 / PR05', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(198).setVisible(false);
     this.dungeonSeedLabel = this.add.text(14, 0, `DUNGEON SEED: ${this.dungeon.seed}`, {
@@ -776,18 +776,44 @@ export class DungeonScene extends Phaser.Scene {
     }
     for (const cast of this.skills.update(this.movement.position, this.enemies, delta / 1000, canSee)) {
       const color = cast.skillId === 'crescent-cleave' ? 0xe8bb6c
+        : cast.skillId === 'piercing-volley' ? 0xf5c576
+        : cast.skillId === 'arc-relay' ? 0x82c8ff
         : cast.skillId === 'frost-bloom' ? 0x74cce2
         : cast.skillId === 'ash-lance' ? 0xb28ce8 : 0xe56c32;
       const rim = cast.skillId === 'crescent-cleave' ? 0xffedac
+        : cast.skillId === 'piercing-volley' ? 0xffe7b0
+        : cast.skillId === 'arc-relay' ? 0xd0f4ff
         : cast.skillId === 'frost-bloom' ? 0xb9f4ff
         : cast.skillId === 'ash-lance' ? 0xe2ccff : 0xffb16e;
-      const burst = this.add.circle(cast.center.x, cast.center.y, cast.radius, color, 0.25)
-        .setStrokeStyle(4, rim, 0.9).setDepth(12);
-      this.tweens.add({targets:burst,scale:1.2,alpha:0,duration:460,onComplete:()=>burst.destroy()});
+      if (cast.pattern === 'area') {
+        const burst = this.add.circle(cast.center.x, cast.center.y, cast.radius, color, 0.25)
+          .setStrokeStyle(4, rim, 0.9).setDepth(12);
+        this.tweens.add({targets:burst,scale:1.2,alpha:0,duration:460,onComplete:()=>burst.destroy()});
+      } else if (cast.pattern === 'pierce' && cast.path && cast.path.length > 1) {
+        const beam = this.add.graphics().setDepth(12);
+        const [from, to] = cast.path;
+        const line = new Phaser.Geom.Line(from.x, from.y, to.x, to.y);
+        beam.lineStyle(cast.radius * 2, color, 0.20).strokeLineShape(line);
+        beam.lineStyle(4, rim, 0.90).strokeLineShape(line);
+        this.tweens.add({targets:beam,alpha:0,duration:360,onComplete:()=>beam.destroy()});
+      } else if (cast.pattern === 'chain' && cast.path) {
+        const arc = this.add.graphics().setDepth(12);
+        arc.lineStyle(7, color, 0.75);
+        for (let index = 1; index < cast.path.length; index++) {
+          const from = cast.path[index - 1];
+          const to = cast.path[index];
+          arc.strokeLineShape(new Phaser.Geom.Line(from.x, from.y, to.x, to.y));
+        }
+        // A solitary first hit still gets a visible marker.
+        for (const hit of cast.path) {
+          arc.lineStyle(2, rim, 0.9).strokeCircle(hit.x, hit.y, 16);
+        }
+        this.tweens.add({targets:arc,alpha:0,duration:430,onComplete:()=>arc.destroy()});
+      }
       for (const hit of cast.hits) {
         const enemy = this.enemies.find(e => e.id === hit.enemyId);
         if (enemy) this.showDamage(enemy.position, hit.damage,
-          cast.skillId === 'crescent-cleave' ? '#ffdc93' : cast.skillId === 'frost-bloom' ? '#a8ebfb' : cast.skillId === 'ash-lance' ? '#e0baff' : '#ff9a5c');
+          cast.skillId === 'crescent-cleave' || cast.skillId === 'piercing-volley' ? '#ffdc93' : cast.skillId === 'arc-relay' ? '#c5efff' : cast.skillId === 'frost-bloom' ? '#a8ebfb' : cast.skillId === 'ash-lance' ? '#e0baff' : '#ff9a5c');
       }
     }
     // Both attacks and skills change health; synchronize enemy visuals once per frame.
