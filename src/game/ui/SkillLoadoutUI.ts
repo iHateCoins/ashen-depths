@@ -16,6 +16,7 @@ export class SkillLoadoutUI {
     private readonly skills: AutoSkillSystem,
     private readonly canOpen: () => boolean,
     private readonly onOpen: () => void,
+    private readonly canModify: () => boolean,
   ) {
     this.toggle = document.createElement('button');
     this.toggle.id = 'ashen-skills-toggle';
@@ -51,7 +52,7 @@ export class SkillLoadoutUI {
 
     const description = document.createElement('p');
     description.className = 'ashen-skills-description';
-    description.textContent = 'Equip up to two different skills. They cast automatically on enemies in range; choosing skills pauses the expedition.';
+    description.textContent = 'Equip up to two different skills at entrance camp. They cast automatically on enemies in range. You may inspect your loadout later, but changes must wait for your next expedition.';
     const summary = document.createElement('p');
     summary.id = 'ashen-skills-summary';
     summary.className = 'ashen-skills-summary';
@@ -81,7 +82,8 @@ export class SkillLoadoutUI {
 
   private render(): void {
     const selected = this.skills.equipped;
-    this.summary.textContent = `${selected.length} / ${SKILL_SLOT_LIMIT} slots · ${selected.length ? selected.map(skill => skill.name).join(' + ') : 'No skills equipped'}`;
+    const editable = this.canModify();
+    this.summary.textContent = `${selected.length} / ${SKILL_SLOT_LIMIT} slots · ${selected.length ? selected.map(skill => skill.name).join(' + ') : 'No skills equipped'}${editable ? '' : ' · Changes available at camp only'}`;
     this.list.replaceChildren();
 
     for (const skill of ACTIVE_SKILLS) {
@@ -99,10 +101,11 @@ export class SkillLoadoutUI {
       const action = document.createElement('button');
       action.type = 'button';
       action.className = 'ashen-skill-equip';
-      action.textContent = equipped ? 'UNEQUIP' : selected.length >= SKILL_SLOT_LIMIT ? 'SLOTS FULL' : 'EQUIP';
-      action.disabled = !equipped && selected.length >= SKILL_SLOT_LIMIT;
+      action.textContent = !editable ? 'CAMP ONLY' : equipped ? 'UNEQUIP' : selected.length >= SKILL_SLOT_LIMIT ? 'SLOTS FULL' : 'EQUIP';
+      action.disabled = !editable || (!equipped && selected.length >= SKILL_SLOT_LIMIT);
       action.setAttribute('aria-label', `${equipped ? 'Unequip' : 'Equip'} ${skill.name}`);
       action.addEventListener('click', event => {
+        if (!this.canModify()) return;
         event.preventDefault();
         event.stopPropagation();
         const current = this.skills.equipped;
