@@ -120,7 +120,7 @@ export class LootUI {
     header.append(heading, close);
 
     const warning = createElement('p', 'ashen-bag-warning',
-      'UNSECURED — both carried and equipped items are lost when this run ends. Extraction and permanent stash come later.');
+      'UNSECURED LOOT — both carried and equipped items are lost when this run ends. Extraction and permanent stash come later.');
     const equipmentHeading = createElement('h3', 'ashen-gear-heading', 'Equipped Gear');
     const equipmentList = createElement('div', 'ashen-equipment-list');
     const stats = createElement('p', 'ashen-equipment-stats');
