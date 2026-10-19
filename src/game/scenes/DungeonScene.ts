@@ -195,7 +195,8 @@ export class DungeonScene extends Phaser.Scene {
     this.stashUi = new StashUI(this.securedStash, this.loot, id => this.withdrawFromStash(id));
     this.skillUi = new SkillLoadoutUI(this.skills,
       () => !this.health.defeated && !this.finalized && !this.lootUi.isOpen && !this.stashUi.isOpen,
-      () => this.cancelExtraction());
+      () => this.cancelExtraction(),
+      () => this.campAvailable);
     this.extractionUi = new ExtractionUI(id => this.startExtraction(id), () => this.cancelExtraction());
     this.interactionDock = new InteractionDock(() => this.cancelExtraction());
     this.interactionDock.refresh(false);
