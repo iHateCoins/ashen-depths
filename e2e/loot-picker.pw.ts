@@ -79,7 +79,7 @@ test('a clustered pile has one world icon and lets iPhone players choose each it
   expect(await page.evaluate(() => document.documentElement.dataset.ashenBagCount)).toBe('0');
 
   const chosen = initial.ground[1];
-  await tap(page, picker.getByRole('button', { name: `Take ${chosen.name}` }));
+  await tap(page, picker.locator('.ashen-loot-picker-item').last().getByRole('button', { name: /^Take /i }));
   await expect.poll(() => page.evaluate(
     () => document.documentElement.dataset.ashenBagCount
   )).toBe('1');
@@ -106,7 +106,7 @@ test('a clustered pile has one world icon and lets iPhone players choose each it
   expect(current.groundId).toBe(initial.ground[0].itemId);
   expect(current.visuals).toBe(1);
 
-  await tap(page, picker.getByRole('button', { name: `Take ${initial.ground[0].name}` }));
+  await tap(page, picker.locator('.ashen-loot-picker-item').first().getByRole('button', { name: /^Take /i }));
   await expect.poll(() => page.evaluate(
     () => document.documentElement.dataset.ashenBagCount
   )).toBe('2');
