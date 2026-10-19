@@ -192,3 +192,60 @@ test('short landscape view presents one touchable card with two non-overlapping 
     document.documentElement.dataset.ashenBagCount,
   )).toBe('1');
 });
+
+test('loot beside a sanctuary shrine never obscures its independent reward button', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(gameUrl);
+  await expect(page.locator('canvas')).toBeVisible({ timeout: 20_000 });
+  await page.evaluate(() => {
+    const runtime = window as Window & {
+      __ashenE2eGame?: { scene: { getScene: (key: string) => unknown } };
+    };
+    const scene = runtime.__ashenE2eGame!.scene.getScene('DungeonScene') as {
+      optionalObjectives: { objectives: {id:string;position:{x:number;y:number}}[] };
+      movement: { position: {x:number;y:number};stop:()=>void };
+      enemies: { id:number;position:{x:number;y:number} }[];
+      health: { damage: (amount:number)=>void };
+      loot: {dropForEnemy:(id:number,kind:string,guardian:boolean,pos:{x:number;y:number})=>unknown};
+      waypoints: {x:number;y:number}[];
+      refreshGroundVisuals: ()=>void;
+    };
+    const shrine = scene.optionalObjectives.objectives.find(x => x.id === 'shrine');
+    if (!shrine) throw new Error('Missing shrine');
+    for (const enemy of scene.enemies) {
+      enemy.position = { x:-2000-enemy.id*100, y:-2000 };
+    }
+    scene.movement.stop();
+    scene.waypoints = [];
+    scene.movement.position = { ...shrine.position };
+    scene.health.damage(25);
+    scene.loot.dropForEnemy(7000,'brute',false,
+      { x: shrine.position.x+16, y: shrine.position.y });
+    scene.refreshGroundVisuals();
+  });
+
+  await expect(page.locator('#ashen-interaction-dock')).toBeVisible();
+  await expect(page.locator('#ashen-interaction-loot')).toBeVisible();
+  await expect(page.locator('#ashen-interaction-objective')).toBeVisible();
+  await expect(page.locator('#ashen-interaction-extract')).toBeHidden();
+  await expect(page.locator('#ashen-loot-nearby')).toBeVisible();
+  await expect(page.locator('#ashen-optional-objective')).toBeHidden();
+  await expectNoDockOverlap(page);
+
+  await tap(page, page.locator('#ashen-interaction-objective'));
+  await expect(page.locator('#ashen-optional-objective')).toBeVisible();
+  await expect(page.locator('#ashen-loot-nearby')).toBeHidden();
+  await expectNoDockOverlap(page);
+  await tap(page, page.locator('#ashen-optional-objective').getByRole('button', {name:'USE SHRINE'}));
+  await expect.poll(() => page.evaluate(() =>
+    document.documentElement.dataset.ashenOptionalObjectives,
+  )).toBe('1');
+  // The consumed shrine goes away; loot remains exactly where it dropped.
+  await expect(page.locator('#ashen-interaction-objective')).toBeHidden();
+  await expect(page.locator('#ashen-loot-nearby')).toBeVisible();
+  await tap(page, page.locator('#ashen-loot-nearby').getByRole('button', {name:'PICK UP'}));
+  await expect.poll(() => page.evaluate(() =>
+    document.documentElement.dataset.ashenBagCount,
+  )).toBe('1');
+});
+
