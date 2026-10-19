@@ -1,7 +1,11 @@
 import type { Point } from '../movement/MovementController';
 import type { Enemy } from './AutoCombat';
 
+export type SkillDamageType = 'attack' | 'spell';
+
 export interface AutoSkillDefinition {
+  /** Determines which equipped item bonuses increase the skill damage. */
+  readonly type: SkillDamageType;
   readonly id: string;
   readonly name: string;
   readonly range: number;
@@ -28,6 +32,7 @@ export type LineOfSight = (from: Point, to: Point) => boolean;
 export const CINDER_BURST: AutoSkillDefinition = {
   id: 'cinder-burst',
   name: 'Cinder Burst',
+  type: 'spell',
   range: 250,
   radius: 105,
   damage: 35,
@@ -37,16 +42,24 @@ export const CINDER_BURST: AutoSkillDefinition = {
 export const SKILL_SLOT_LIMIT = 2;
 
 export const FROST_BLOOM: AutoSkillDefinition = {
-  id: 'frost-bloom', name: 'Frost Bloom', range: 170, radius: 140,
+  id: 'frost-bloom', name: 'Frost Bloom', type: 'spell', range: 170, radius: 140,
   damage: 20, cooldownSeconds: 6,
 };
 
 export const ASH_LANCE: AutoSkillDefinition = {
-  id: 'ash-lance', name: 'Ash Lance', range: 320, radius: 28,
+  id: 'ash-lance', name: 'Ash Lance', type: 'spell', range: 320, radius: 28,
   damage: 65, cooldownSeconds: 3.5,
 };
 
-export const ACTIVE_SKILLS: readonly AutoSkillDefinition[] = [CINDER_BURST, FROST_BLOOM, ASH_LANCE];
+/** A short-range physical attack that rewards weapon and Sharp-affix equipment. */
+export const CRESCENT_CLEAVE: AutoSkillDefinition = {
+  id: 'crescent-cleave', name: 'Crescent Cleave', type: 'attack',
+  range: 165, radius: 90, damage: 45, cooldownSeconds: 3.6,
+};
+
+export const ACTIVE_SKILLS: readonly AutoSkillDefinition[] = [
+  CINDER_BURST, FROST_BLOOM, ASH_LANCE, CRESCENT_CLEAVE,
+];
 
 /**
  * Each support is a trade-off, not a free upgrade. At most one support is
@@ -85,6 +98,7 @@ export const SKILL_SUPPORTS: readonly SkillSupportDefinition[] = [
 
 export interface EffectiveSkillStats {
   readonly skillId: string;
+  readonly type: SkillDamageType;
   readonly supportId: string | null;
   readonly damage: number;
   readonly radius: number;
@@ -99,8 +113,10 @@ export interface EffectiveSkillStats {
 export class AutoSkillSystem {
   private cooldowns = new Map<string, number>();
   private supports = new Map<string, string>();
-  /** Additive damage granted by worn equipment, never manually cast. */
+  /** Spell Power from equipment scales spells only. */
   bonusDamage = 0;
+  /** Attack Power from equipment scales attack-tagged skills only. */
+  bonusAttackDamage = 0;
   private equippedSkills: AutoSkillDefinition[];
   get equipped(): readonly AutoSkillDefinition[] { return [...this.equippedSkills]; }
 
@@ -110,7 +126,8 @@ export class AutoSkillSystem {
     const ids = new Set<string>();
     for (const skill of equipped) {
       if (ids.has(skill.id)) throw new Error(`Duplicate active skill: ${skill.id}`);
-      if (!(skill.range > 0 && skill.radius > 0 && skill.damage > 0 && skill.cooldownSeconds > 0)) {
+      if (!['attack', 'spell'].includes(skill.type) ||
+          !(skill.range > 0 && skill.radius > 0 && skill.damage > 0 && skill.cooldownSeconds > 0)) {
         throw new Error(`Invalid auto skill definition: ${skill.id}`);
       }
       ids.add(skill.id);
@@ -157,8 +174,10 @@ export class AutoSkillSystem {
     const support = this.supportFor(skillId);
     return {
       skillId,
+      type: skill.type,
       supportId: support?.id ?? null,
-      damage: Math.max(1, Math.round((skill.damage + this.bonusDamage) * (support?.damageMultiplier ?? 1))),
+      damage: Math.max(1, Math.round((skill.damage + (skill.type === 'attack'
+        ? this.bonusAttackDamage : this.bonusDamage)) * (support?.damageMultiplier ?? 1))),
       radius: Math.max(1, Math.round(skill.radius * (support?.radiusMultiplier ?? 1))),
       range: skill.range,
       cooldownSeconds: Math.round(skill.cooldownSeconds * (support?.cooldownMultiplier ?? 1) * 100) / 100,
