@@ -42,6 +42,7 @@ function previewDifference(current: EquipmentStats, next: EquipmentStats): strin
 export class LootUI {
   private readonly button: HTMLButtonElement;
   private readonly finishButton: HTMLButtonElement;
+  private readonly finishWarning: HTMLElement;
   private victoryOffered = false;
   private readonly nearbyPanel: HTMLElement;
   private readonly nearbyTitle: HTMLElement;
@@ -81,6 +82,12 @@ export class LootUI {
     finish.hidden = true;
     document.body.append(finish);
     this.finishButton = finish;
+    const finishWarning = createElement('p', 'ashen-finish-warning');
+    finishWarning.id = 'ashen-finish-warning';
+    finishWarning.hidden = true;
+    finishWarning.setAttribute('role', 'alert');
+    document.body.append(finishWarning);
+    this.finishWarning = finishWarning;
 
     const nearby = createElement('aside', 'ashen-loot-nearby');
     nearby.id = 'ashen-loot-nearby';
@@ -120,7 +127,7 @@ export class LootUI {
     header.append(heading, close);
 
     const warning = createElement('p', 'ashen-bag-warning',
-      'UNSECURED LOOT — both carried and equipped items are lost when this run ends. Extraction and permanent stash come later.');
+      'UNSECURED LOOT — worn and carried gear is lost on death. Finish the Warden expedition to secure it in your on-device stash.');
     const equipmentHeading = createElement('h3', 'ashen-gear-heading', 'Equipped Gear');
     const equipmentList = createElement('div', 'ashen-equipment-list');
     const stats = createElement('p', 'ashen-equipment-stats');
@@ -154,6 +161,11 @@ export class LootUI {
       this.hideForResult();
       onFinish();
     }, { once: true });
+  }
+
+  showFinishError(message: string): void {
+    this.finishWarning.textContent = message;
+    this.finishWarning.hidden = false;
   }
 
   openBag(): void {
@@ -291,12 +303,14 @@ export class LootUI {
     this.closeBag();
     this.button.hidden = true;
     this.finishButton.hidden = true;
+    this.finishWarning.hidden = true;
     this.nearbyPanel.hidden = true;
   }
 
   destroy(): void {
     this.button.remove();
     this.finishButton.remove();
+    this.finishWarning.remove();
     this.nearbyPanel.remove();
     this.bagOverlay.remove();
   }
