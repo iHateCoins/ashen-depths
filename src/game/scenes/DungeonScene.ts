@@ -474,7 +474,7 @@ export class DungeonScene extends Phaser.Scene {
     this.waypoints = [];
     this.marker.setVisible(false);
     this.victoryOverlay.show(
-      `${result.saved} items secured to this device's stash. ${this.securedStash.count} items stored. New expedition awaits.`,
+      `${result.saved} item${result.saved === 1 ? '' : 's'} secured to this device's stash. ${this.securedStash.count} stored. New expedition awaits.`,
     );
   }
 
