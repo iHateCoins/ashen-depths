@@ -255,3 +255,46 @@ test('loot beside a sanctuary shrine never obscures its independent reward butto
   )).toBe('1');
 });
 
+
+test('Warden Finish button is usable below its uncollected rare loot', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(gameUrl);
+  await expect(page.locator('canvas')).toBeVisible({ timeout: 20_000 });
+  await page.evaluate(() => {
+    const runtime = window as Window & {
+      __ashenE2eGame?: { scene: { getScene: (key: string) => unknown } };
+    };
+    const scene = runtime.__ashenE2eGame!.scene.getScene('DungeonScene') as {
+      movement: { position: {x:number;y:number} };
+      roomEncounters: { guardianId:number; hasEnteredDepth:boolean };
+      enemies: {id:number;hp:number;position:{x:number;y:number}}[];
+    };
+    const guardian = scene.enemies.find(x => x.id === scene.roomEncounters.guardianId);
+    if (!guardian) throw new Error('Warden missing');
+    guardian.position = { x:scene.movement.position.x+24, y:scene.movement.position.y };
+    guardian.hp = 0;
+    scene.roomEncounters.hasEnteredDepth = true;
+  });
+  const finish = page.getByRole('button', { name:'FINISH EXPEDITION' });
+  const loot = page.locator('#ashen-loot-nearby');
+  await expect(finish).toBeVisible({ timeout: 12_000 });
+  await expect(loot).toBeVisible();
+  await expect(page.locator('#ashen-interaction-dock')).toBeVisible();
+
+  const bounds = await page.evaluate(() => {
+    const loot = document.getElementById('ashen-loot-nearby')!.getBoundingClientRect();
+    const finish = document.getElementById('ashen-finish-run')!.getBoundingClientRect();
+    const bag = document.getElementById('ashen-bag-toggle')!.getBoundingClientRect();
+    return { lootBottom:loot.bottom, finishTop:finish.top, finishBottom:finish.bottom, bagTop:bag.top };
+  });
+  expect(bounds.lootBottom).toBeLessThan(bounds.finishTop);
+  expect(bounds.finishBottom).toBeLessThan(bounds.bagTop);
+  await tap(page, loot.getByRole('button', { name:'PICK UP' }));
+  await expect.poll(() => page.evaluate(() =>
+    document.documentElement.dataset.ashenBagCount,
+  )).toBe('1');
+  await tap(page, finish);
+  await expect(page.locator('#ashen-victory-overlay')).toBeVisible();
+  await expect(page.locator('#ashen-victory-overlay')).toContainText('1 item secured');
+});
+
