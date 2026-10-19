@@ -14,6 +14,13 @@ export type EquipmentActionResult = 'equipped' | 'unequipped' | 'not-found' | 'b
 
 export const EQUIPMENT_SLOTS: readonly EquipmentSlot[] = ['weapon', 'armor', 'charm'];
 
+/** Flat armor mitigates enemy contact damage but never makes a hit harmless. */
+export function mitigatedHitDamage(rawDamage: number, armor: number): number {
+  if (!Number.isFinite(rawDamage) || rawDamage <= 0) return 0;
+  const resistance = Number.isFinite(armor) ? Math.max(0, Math.floor(armor)) : 0;
+  return Math.max(1, Math.floor(rawDamage) - resistance);
+}
+
 function emptyStats(): EquipmentStats {
   return { attack: 0, spell: 0, armor: 0, health: 0 };
 }
