@@ -48,12 +48,18 @@ export class LootUI {
   private readonly nearbyTitle: HTMLElement;
   private readonly nearbyDescription: HTMLElement;
   private readonly pickupButton: HTMLButtonElement;
+  private readonly nearbyMoreButton: HTMLButtonElement;
+  private readonly pickerOverlay: HTMLElement;
+  private readonly pickerList: HTMLElement;
+  private readonly pickerCount: HTMLElement;
   private readonly bagOverlay: HTMLElement;
   private readonly bagList: HTMLElement;
   private readonly bagCount: HTMLElement;
   private readonly equipmentList: HTMLElement;
   private readonly statsLine: HTMLElement;
   private highlightedDrop: GroundLoot | null = null;
+  private nearbyDrops: readonly GroundLoot[] = [];
+  private pickerOpen = false;
   private lastSignature = '';
   private open = false;
 
@@ -104,12 +110,45 @@ export class LootUI {
       event.stopPropagation();
       if (this.highlightedDrop && !this.loot.bagFull) this.onPickup(this.highlightedDrop.id);
     });
-    nearby.append(title, description, pickup);
+    const more = createElement('button', 'ashen-loot-more', 'VIEW NEARBY LOOT');
+    more.type = 'button';
+    more.hidden = true;
+    more.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.openPicker();
+    });
+    nearby.append(title, description, pickup, more);
     document.body.append(nearby);
     this.nearbyPanel = nearby;
+    this.nearbyMoreButton = more;
     this.nearbyTitle = title;
     this.nearbyDescription = description;
     this.pickupButton = pickup;
+
+    const picker = createElement('section', 'ashen-loot-picker-overlay');
+    picker.id = 'ashen-loot-picker-overlay';
+    picker.hidden = true;
+    picker.setAttribute('role', 'dialog');
+    picker.setAttribute('aria-modal', 'true');
+    picker.setAttribute('aria-label', 'Nearby ground loot');
+    const pickerPanel = createElement('div', 'ashen-loot-picker-panel');
+    const pickerHeader = createElement('div', 'ashen-bag-header');
+    const pickerTitle = createElement('h2', '', 'Nearby Loot');
+    const pickerClose = createElement('button', 'ashen-loot-picker-close', 'CLOSE');
+    pickerClose.type = 'button';
+    pickerClose.addEventListener('click', () => this.closePicker());
+    pickerHeader.append(pickerTitle, pickerClose);
+    const pickerIntro = createElement('p', 'ashen-loot-picker-intro',
+      'Choose individual items to take. Inspection pauses combat. Items left on the ground remain at risk.');
+    const pickerCount = createElement('p', 'ashen-loot-picker-count');
+    const pickerList = createElement('div', 'ashen-loot-picker-list');
+    pickerPanel.append(pickerHeader, pickerIntro, pickerCount, pickerList);
+    picker.append(pickerPanel);
+    document.body.append(picker);
+    this.pickerOverlay = picker;
+    this.pickerCount = pickerCount;
+    this.pickerList = pickerList;
 
     const overlay = createElement('section', 'ashen-bag-overlay');
     overlay.id = 'ashen-bag-overlay';
@@ -127,7 +166,7 @@ export class LootUI {
     header.append(heading, close);
 
     const warning = createElement('p', 'ashen-bag-warning',
-      'UNSECURED LOOT — worn and carried gear is lost on death. Finish the Warden expedition to secure it in your on-device stash.');
+      'UNSECURED LOOT — worn and carried gear is lost on death. Reach an extraction waystone or defeat the Warden to secure it in your on-device stash.');
     const equipmentHeading = createElement('h3', 'ashen-gear-heading', 'Equipped Gear');
     const equipmentList = createElement('div', 'ashen-equipment-list');
     const stats = createElement('p', 'ashen-equipment-stats');
@@ -147,7 +186,52 @@ export class LootUI {
     this.refresh(null);
   }
 
-  get isOpen(): boolean { return this.open; }
+  get isOpen(): boolean { return this.open || this.pickerOpen; }
+
+  private openPicker(): void {
+    if (this.open || !this.nearbyDrops.length) return;
+    this.pickerOpen = true;
+    this.pickerOverlay.hidden = false;
+    this.nearbyPanel.hidden = true;
+    this.renderPicker();
+    const close = this.pickerOverlay.querySelector('button.ashen-loot-picker-close');
+    if (close instanceof HTMLButtonElement) close.focus({ preventScroll: true });
+  }
+
+  private closePicker(): void {
+    this.pickerOpen = false;
+    this.pickerOverlay.hidden = true;
+    this.lastSignature = '';
+    this.refresh(this.highlightedDrop, this.nearbyDrops);
+  }
+
+  private renderPicker(): void {
+    this.pickerCount.textContent = `${this.nearbyDrops.length} reachable item${this.nearbyDrops.length === 1 ? '' : 's'} · Bag ${this.loot.bag.length}/${this.loot.capacity}`;
+    this.pickerList.replaceChildren();
+    for (const drop of this.nearbyDrops) {
+      const card = createElement('article', 'ashen-loot-picker-item');
+      const info = createElement('div', 'ashen-bag-item-details');
+      const name = createElement('strong', '', drop.item.name);
+      name.style.color = RARITY_COLOR[drop.item.rarity];
+      info.append(name);
+      info.append(createElement('span', '',
+        `${drop.item.rarity.toUpperCase()} · ${drop.item.slot.toUpperCase()} · LEVEL ${drop.item.itemLevel}`));
+      info.append(createElement('span', '', statLines(itemBonuses(drop.item))));
+      info.append(createElement('span', 'ashen-bag-comparison',
+        previewDifference(this.equipment.stats, this.equipment.previewEquip(drop.item))));
+      const button = createElement('button', 'ashen-loot-picker-take', 'TAKE');
+      button.type = 'button';
+      button.setAttribute('aria-label', `Take ${drop.item.name}`);
+      button.disabled = this.loot.bagFull;
+      button.addEventListener('click', () => {
+        this.onPickup(drop.id);
+        // The scene rerenders the picker from the exact surviving ground
+        // items, preserving individual pickup range and wall checks.
+      });
+      card.append(info, button);
+      this.pickerList.append(card);
+    }
+  }
 
   /** The Warden drop remains accessible until the player finishes the run. */
   enableFinish(onFinish: () => void): void {
@@ -170,6 +254,10 @@ export class LootUI {
   }
 
   openBag(): void {
+    if (this.pickerOpen) {
+      this.pickerOpen = false;
+      this.pickerOverlay.hidden = true;
+    }
     this.open = true;
     this.bagOverlay.hidden = false;
     this.nearbyPanel.hidden = true;
@@ -269,18 +357,26 @@ export class LootUI {
     return card;
   }
 
-  /** Only changes visible DOM when inventory, loadout or nearest loot changes. */
-  refresh(nearest: GroundLoot | null): void {
+  /** Update near-loot and inventory controls from actual reachable drops. */
+  refresh(nearest: GroundLoot | null, nearby: readonly GroundLoot[] = nearest ? [nearest] : []): void {
     this.highlightedDrop = nearest;
+    this.nearbyDrops = [...nearby];
     const signature = [
       this.loot.bag.map(item => item.id).join(','),
       EQUIPMENT_SLOTS.map(slot => this.equipment.get(slot)?.id ?? '-').join(','),
-      nearest?.id ?? 'none',
+      nearby.map(drop => drop.id).join(','),
       this.loot.bagFull ? 'full' : 'space',
     ].join('|');
     if (this.lastSignature === signature) return;
     this.lastSignature = signature;
     this.button.textContent = `BAG ${this.loot.bag.length} / ${this.loot.capacity}`;
+
+    if (this.pickerOpen) {
+      this.nearbyPanel.hidden = true;
+      if (!nearby.length) this.closePicker();
+      else this.renderPicker();
+      return;
+    }
     if (this.open) {
       this.nearbyPanel.hidden = true;
       this.renderBag();
@@ -298,9 +394,13 @@ export class LootUI {
     ).join(', ') : 'No modifiers'}`;
     this.pickupButton.textContent = this.loot.bagFull ? 'BAG FULL' : 'PICK UP';
     this.pickupButton.disabled = this.loot.bagFull;
+    this.nearbyMoreButton.hidden = nearby.length <= 1;
+    this.nearbyMoreButton.textContent = `VIEW ${nearby.length} ITEMS`;
   }
 
   hideForResult(): void {
+    this.pickerOpen = false;
+    this.pickerOverlay.hidden = true;
     this.closeBag();
     this.button.hidden = true;
     this.finishButton.hidden = true;
@@ -313,6 +413,7 @@ export class LootUI {
     this.finishButton.remove();
     this.finishWarning.remove();
     this.nearbyPanel.remove();
+    this.pickerOverlay.remove();
     this.bagOverlay.remove();
   }
 }
