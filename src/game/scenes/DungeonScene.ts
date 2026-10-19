@@ -545,14 +545,6 @@ export class DungeonScene extends Phaser.Scene {
     const guardianAlive = this.roomEncounters.guardianAlive(this.enemies);
     const localHostiles = this.roomEncounters.roomHostiles(room, this.enemies);
     const alive = this.enemies.filter(enemy => enemy.hp > 0).length;
-    let objective: string;
-    if (this.roomEncounters.completed) {
-      objective = 'DEPTH CLEARED · WARDEN DEFEATED';
-    } else if (this.roomEncounters.hasEnteredDepth) {
-      objective = guardianAlive ? 'DEEP CHAMBER · DEFEAT THE WARDEN' : 'DEEP CHAMBER · WARDEN FALLEN';
-    } else {
-      objective = 'EXPLORE · FIND THE DEEP CHAMBER';
-    }
     const worn = this.loadout.stats;
     const shortObjective = this.roomEncounters.completed ? 'WARDEN DEFEATED'
       : this.roomEncounters.hasEnteredDepth ? 'DEFEAT THE WARDEN' : 'FIND THE DEEP CHAMBER';
