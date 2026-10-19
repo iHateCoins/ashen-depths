@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AutoCombat, type Enemy } from '../src/game/combat/AutoCombat';
-import { AutoSkillSystem, CINDER_BURST } from '../src/game/combat/AutoSkillSystem';
+import { AutoSkillSystem, CINDER_BURST, FROST_BLOOM, ASH_LANCE, SKILL_SLOT_LIMIT } from '../src/game/combat/AutoSkillSystem';
 
 const enemy = (id: number, x: number, y = 0, hp = 100): Enemy =>
   ({ id, position: { x, y }, hp, maxHp: 100 });
@@ -50,6 +50,48 @@ describe('automatic skill selection', () => {
 
   it('permits only one equipped copy per skill ID', () => {
     expect(() => new AutoSkillSystem([CINDER_BURST, CINDER_BURST])).toThrow(/Duplicate/);
+  });
+
+  it('enforces exactly two active slots and a single copy of each skill', () => {
+    expect(SKILL_SLOT_LIMIT).toBe(2);
+    expect(() => new AutoSkillSystem([CINDER_BURST, FROST_BLOOM, ASH_LANCE])).toThrow(/slots full/);
+    const system = new AutoSkillSystem([CINDER_BURST, FROST_BLOOM]);
+    expect(system.equipped.map(skill => skill.id)).toEqual(['cinder-burst', 'frost-bloom']);
+    expect(() => system.setEquipped([ASH_LANCE, ASH_LANCE])).toThrow(/Duplicate/);
+    expect(system.equipped.map(skill => skill.id)).toEqual(['cinder-burst', 'frost-bloom']);
+    system.setEquipped([FROST_BLOOM, ASH_LANCE]);
+    expect(system.equipped.map(skill => skill.id)).toEqual(['frost-bloom', 'ash-lance']);
+  });
+
+  it('preserves cooldown of a still-equipped skill while replacing the other', () => {
+    const system = new AutoSkillSystem([CINDER_BURST, FROST_BLOOM]);
+    const targets = [enemy(1, 90, 0, 300)];
+    expect(system.update({ x: 0, y: 0 }, targets, 0.016)).toHaveLength(2);
+    const frostCooldown = system.remaining(FROST_BLOOM.id);
+    system.setEquipped([FROST_BLOOM, ASH_LANCE]);
+    expect(system.remaining(FROST_BLOOM.id)).toBe(frostCooldown);
+    expect(system.remaining(ASH_LANCE.id)).toBe(0);
+    expect(system.remaining(CINDER_BURST.id)).toBe(0);
+    const casts = system.update({ x: 0, y: 0 }, targets, 0.016);
+    expect(casts.map(cast => cast.skillId)).toEqual([ASH_LANCE.id]);
+  });
+
+  it('supports single-target lance and broad-area frost without manual attack input', () => {
+    const system = new AutoSkillSystem([ASH_LANCE, FROST_BLOOM]);
+    const targets = [enemy(1, 80, 0, 200), enemy(2, 145, 0, 200)];
+    const casts = system.update({ x: 0, y: 0 }, targets, 0.016);
+    expect(casts.map(cast => cast.skillId)).toEqual([ASH_LANCE.id, FROST_BLOOM.id]);
+    expect(casts[0].hits).toHaveLength(1);
+    expect(casts[1].hits).toHaveLength(2);
+  });
+
+  it('permits empty loadouts and rejects bad replacements without changing current skills', () => {
+    const system = new AutoSkillSystem();
+    system.setEquipped([]);
+    expect(system.update({ x: 0, y: 0 }, [enemy(1, 50)], 0.016)).toEqual([]);
+    system.setEquipped([CINDER_BURST]);
+    expect(() => system.setEquipped([{ ...CINDER_BURST, damage: -1 }])).toThrow(/Invalid/);
+    expect(system.equipped.map(skill => skill.id)).toEqual([CINDER_BURST.id]);
   });
 
   it('prevents basic attacks through obstructions', () => {
