@@ -74,9 +74,22 @@ test('unsecured Warden discovery vanishes after restart', async ({ page }) => {
     for (const enemy of scene.enemies) if (enemy.id !== guardian.id)
       enemy.position = { x: -1500, y: -1500 };
   });
-  await expect(page.locator('#ashen-reward-toggle')).toBeVisible({ timeout: 12_000 });
-  await page.locator('#ashen-reward-toggle').click();
-  await page.getByRole('button', { name: 'Choose Ash Lance' }).click();
+  const toggle = page.locator('#ashen-reward-toggle');
+  await expect(toggle).toBeVisible({ timeout: 12_000 });
+  await toggle.scrollIntoViewIfNeeded();
+  // On iPhone Safari a mouse .click() is not the same path as a finger tap.
+  // Exercise native touch input and verify the dialog transition explicitly.
+  if (test.info().project.name === 'desktop') await toggle.click();
+  else await toggle.tap();
+
+  const rewardDialog = page.locator('#ashen-reward-overlay');
+  await expect(rewardDialog).toBeVisible({ timeout: 12_000 });
+  await expect(rewardDialog).toContainText('Warden Discovery');
+  const ashChoice = rewardDialog.locator('button[aria-label="Choose Ash Lance"]');
+  await expect(ashChoice).toHaveCount(1);
+  await ashChoice.scrollIntoViewIfNeeded();
+  if (test.info().project.name === 'desktop') await ashChoice.click();
+  else await ashChoice.tap();
   await expect.poll(async () => (await sceneState(page)).pending).toContain('skill:ash-lance');
   await page.evaluate(() => {
     const scene = (window as any).__ashenE2eGame.scene.getScene('DungeonScene') as any;
