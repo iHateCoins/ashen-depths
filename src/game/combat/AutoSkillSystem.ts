@@ -40,6 +40,8 @@ export const CINDER_BURST: AutoSkillDefinition = {
  */
 export class AutoSkillSystem {
   private cooldowns = new Map<string, number>();
+  /** Additive damage granted by worn equipment, never manually cast. */
+  bonusDamage = 0;
   readonly equipped: readonly AutoSkillDefinition[];
 
   constructor(equipped: readonly AutoSkillDefinition[] = [CINDER_BURST]) {
@@ -103,8 +105,9 @@ export class AutoSkillSystem {
         if (enemy.hp <= 0) continue;
         if (Math.hypot(enemy.position.x - center.x, enemy.position.y - center.y) > skill.radius ||
             !clear(center, enemy.position)) continue;
-        enemy.hp = Math.max(0, enemy.hp - skill.damage);
-        hits.push({ enemyId: enemy.id, damage: skill.damage });
+        const damage = skill.damage + this.bonusDamage;
+        enemy.hp = Math.max(0, enemy.hp - damage);
+        hits.push({ enemyId: enemy.id, damage });
       }
       this.cooldowns.set(skill.id, skill.cooldownSeconds);
       casts.push({ skillId: skill.id, targetId: best.id, center, radius: skill.radius, hits });
