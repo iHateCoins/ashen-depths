@@ -82,6 +82,7 @@ function cloneItem(item: LootItem): LootItem {
 export class SecuredStash {
   private data = freshSnapshot();
   private state: StashStatus = 'ready';
+  private lastStored: string | null = null;
 
   constructor(private readonly storage: StashStorage | null = tryStorage()) {
     if (!this.storage) {
@@ -90,6 +91,7 @@ export class SecuredStash {
     }
     try {
       const raw = this.storage.getItem(STASH_STORAGE_KEY);
+      this.lastStored = raw;
       if (raw !== null) {
         const loaded = parseSnapshot(raw);
         if (!loaded) {
@@ -118,11 +120,14 @@ export class SecuredStash {
       return { ok: false, saved: 0, reason: 'storage-full' };
     }
     const revision = this.data.revision + 1;
+    if (!Number.isSafeInteger(revision) || !Number.isSafeInteger(this.data.completed + 1)) {
+      return { ok: false, saved: 0, reason: 'invalid-items' };
+    }
     const secured = items.map((item, index) => ({
       ...cloneItem(item),
       // Multiple successful expeditions with a fixed ?seed must never produce
       // indistinguishable item IDs or allow an item to be claimed twice.
-      id: `secure-${revision}-${index}-${item.id}`.slice(0, 160),
+      id: `secure-${revision}-${index}`,
     }));
     const next: StashSnapshot = {
       schema: 1,
@@ -139,13 +144,11 @@ export class SecuredStash {
     if (this.state !== 'ready') return null;
     const index = this.data.items.findIndex(item => item.id === id);
     if (index < 0) return null;
+    const withdrawn = cloneItem(this.data.items[index]);
     const next = { ...this.data, revision: this.data.revision + 1,
       items: this.data.items.filter(item => item.id !== id) };
     if (!this.commit(next)) return null;
-    return cloneItem(this.data.items.find(item => item.id === id) ??
-      // The returned item must be captured before replacing the snapshot.
-      // (See captured value in the method below.)
-      next.items[0]);
+    return withdrawn;
   }
 
   /**
@@ -168,7 +171,11 @@ export class SecuredStash {
   private commit(next: StashSnapshot): boolean {
     if (this.state !== 'ready' || !this.storage) return false;
     try {
-      this.storage.setItem(STASH_STORAGE_KEY, JSON.stringify(next));
+      // Avoid overwriting a more recent save from another open game tab.
+      if (this.storage.getItem(STASH_STORAGE_KEY) !== this.lastStored) return false;
+      const serialized = JSON.stringify(next);
+      this.storage.setItem(STASH_STORAGE_KEY, serialized);
+      this.lastStored = serialized;
       this.data = next;
       return true;
     } catch {
