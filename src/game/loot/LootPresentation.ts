@@ -23,11 +23,13 @@ const RARITY_ORDER: Readonly<Record<ItemRarity, number>> = {
  * for a given set of drops, independent of input order.
  *
  * This never changes the source items, loot probabilities, pickup distances,
- * fog logic, line of sight or inventory ownership.
+ * fog logic, line of sight or inventory ownership. The optional predicate
+ * prevents visually revealing or collapsing items on opposite sides of walls.
  */
 export function groupGroundLoot(
   drops: readonly GroundLoot[],
   threshold = LOOT_CLUSTER_DISTANCE,
+  canSharePile: (a: Point, b: Point) => boolean = () => true,
 ): LootCluster[] {
   if (!Number.isFinite(threshold) || threshold <= 0) throw new Error('Invalid grouping radius');
   const sorted = [...drops].sort((a, b) => a.id.localeCompare(b.id));
@@ -44,7 +46,8 @@ export function groupGroundLoot(
       if (Math.hypot(
         sorted[i].position.x - sorted[j].position.x,
         sorted[i].position.y - sorted[j].position.y,
-      ) > threshold) continue;
+      ) > threshold ||
+        !canSharePile(sorted[i].position, sorted[j].position)) continue;
       const first = root(i), second = root(j);
       if (first !== second) parent[second] = first;
     }
