@@ -164,7 +164,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M04 / PR06', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M04 / PR07', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(198).setVisible(false);
     this.dungeonSeedLabel = this.add.text(14, 0, `DUNGEON SEED: ${this.dungeon.seed}`, {
@@ -324,7 +324,7 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   private activateOptionalObjective(kind: OptionalObjectiveKind): void {
-    if (this.health.defeated || this.roomEncounters.completed) return;
+    if (this.health.defeated || this.finalized) return;
     const reward = this.optionalObjectives.activate(
       kind, this.movement.position, this.enemies, this.health.hp, this.health.maxHp,
     );
@@ -346,7 +346,7 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   private refreshOptionalPrompt(): void {
-    if (this.health.defeated || this.roomEncounters.completed) {
+    if (this.health.defeated || this.finalized) {
       this.optionalUi.hide();
       return;
     }
@@ -488,7 +488,7 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   private startExtraction(id: string): void {
-    if (this.finalized || this.health.defeated || this.roomEncounters.completed ||
+    if (this.finalized || this.health.defeated || this.finalized ||
         this.lootUi.isOpen || this.stashUi.isOpen) return;
     if (!this.extraction.start(id, this.movement.position)) return;
     this.movement.stop();
@@ -505,7 +505,7 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   private refreshExtractionPrompt(): void {
-    if (this.health.defeated || this.finalized || this.roomEncounters.completed) {
+    if (this.health.defeated || this.finalized) {
       this.extractionUi.hide();
       this.interactionDock.refresh(false);
       return;
@@ -798,8 +798,8 @@ export class DungeonScene extends Phaser.Scene {
       // Winning is not the same as extracting. Let the player pick up Warden
       // loot and inspect the bag before deliberately finishing the run.
       this.showCombatText(this.movement.position, 'WARDEN DEFEATED', '#f5d7a4');
-      this.extraction.cancel();
-      this.extractionUi.hide();
+      // Defeating the Warden unlocks Finish but does not close optional
+      // objectives or early extraction. Both remain until an exit is saved.
       this.lootUi.enableFinish(() => this.secureAndFinish());
     }
     this.updateObjectiveStatus();
