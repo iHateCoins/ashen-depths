@@ -171,7 +171,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M05 / PR05', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M05 / PR06', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(198).setVisible(false);
     this.dungeonSeedLabel = this.add.text(14, 0, `DUNGEON SEED: ${this.dungeon.seed}`, {
@@ -197,7 +197,10 @@ export class DungeonScene extends Phaser.Scene {
       id => this.equipBagItem(id),
       slot => this.unequipGear(slot),
     );
-    this.stashUi = new StashUI(this.securedStash, this.loot, id => this.withdrawFromStash(id));
+    this.stashUi = new StashUI(
+      this.securedStash, this.loot, id => this.withdrawFromStash(id),
+      (id, affixIndex) => this.reforgeStashItem(id, affixIndex),
+    );
     this.skillUi = new SkillLoadoutUI(this.skills,
       () => !this.health.defeated && !this.finalized && !this.lootUi.isOpen && !this.stashUi.isOpen,
       () => this.cancelExtraction(),
@@ -537,6 +540,13 @@ export class DungeonScene extends Phaser.Scene {
     this.interactionDock.refresh(this.extraction.phase === 'channeling');
   }
 
+  private reforgeStashItem(id: string, affixIndex: number): boolean {
+    if (this.health.defeated || this.finalized || !this.campAvailable) return false;
+    const saved = this.securedStash.reforgeItem(id, affixIndex);
+    if (saved) this.updateObjectiveStatus();
+    return saved;
+  }
+
   private withdrawFromStash(id: string): void {
     if (this.health.defeated || this.finalized || !this.campAvailable || this.loot.bagFull) return;
     const item = this.securedStash.withdraw(id);
@@ -558,7 +568,9 @@ export class DungeonScene extends Phaser.Scene {
         (item): item is NonNullable<typeof item> => item !== null,
       ),
     ];
-    const result = this.securedStash.secureExpedition(items, this.progression.pendingUnlocks);
+    const result = this.securedStash.secureExpedition(
+      items, this.progression.pendingUnlocks, this.progression.pendingForgeEmbers,
+    );
     if (!result.ok) {
       const message = result.reason === 'storage-full'
         ? 'Stash full: no items saved. Gear remains in this run.'
@@ -590,7 +602,7 @@ export class DungeonScene extends Phaser.Scene {
     this.movement.stop();
     this.waypoints = [];
     this.marker.setVisible(false);
-    const message = `${result.saved} item${result.saved === 1 ? '' : 's'} secured to this device's stash. ${this.securedStash.count} stored. New expedition awaits.`;
+    const message = `${result.saved} item${result.saved === 1 ? '' : 's'} secured to this device's stash. ${this.progression.pendingUnlocks.length} new skill/support unlocks · ${this.progression.pendingForgeEmbers} Forge Embers secured. ${this.securedStash.count} items stored. New expedition awaits.`;
     if (mode === 'early') this.extractionOverlay.show(message);
     else this.victoryOverlay.show(message);
   }
@@ -683,6 +695,8 @@ export class DungeonScene extends Phaser.Scene {
     document.documentElement.dataset.ashenCampOpen = String(this.campAvailable);
     document.documentElement.dataset.ashenPendingUnlocks = String(this.progression.pendingUnlocks.length);
     document.documentElement.dataset.ashenSecuredUnlocks = String(this.progression.secured.length);
+    document.documentElement.dataset.ashenPendingForgeEmbers = String(this.progression.pendingForgeEmbers);
+    document.documentElement.dataset.ashenSecuredForgeEmbers = String(this.securedStash.forgeEmbers);
     document.documentElement.dataset.ashenExitCount = String(this.extraction.sites.length);
     document.documentElement.dataset.ashenExtractionPhase = this.extraction.phase;
     document.documentElement.dataset.ashenExtractionSite = this.extraction.site?.id ?? '';
