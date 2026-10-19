@@ -1,3 +1,4 @@
+import type { SkillProgression } from '../combat/SkillProgression';
 import { ACTIVE_SKILLS, SKILL_SLOT_LIMIT, SKILL_SUPPORTS, type AutoSkillDefinition, type AutoSkillSystem } from '../combat/AutoSkillSystem';
 
 /**
@@ -17,6 +18,7 @@ export class SkillLoadoutUI {
     private readonly canOpen: () => boolean,
     private readonly onOpen: () => void,
     private readonly canModify: () => boolean,
+    private readonly progression: SkillProgression,
   ) {
     this.toggle = document.createElement('button');
     this.toggle.id = 'ashen-skills-toggle';
@@ -88,6 +90,7 @@ export class SkillLoadoutUI {
 
     for (const skill of ACTIVE_SKILLS) {
       const equipped = selected.some(item => item.id === skill.id);
+      const learned = this.progression.canUseSkill(skill.id);
       const card = document.createElement('article');
       card.className = 'ashen-skill-card';
       const details = document.createElement('div');
@@ -110,11 +113,11 @@ export class SkillLoadoutUI {
       const action = document.createElement('button');
       action.type = 'button';
       action.className = 'ashen-skill-equip';
-      action.textContent = !editable ? 'CAMP ONLY' : equipped ? 'UNEQUIP' : selected.length >= SKILL_SLOT_LIMIT ? 'SLOTS FULL' : 'EQUIP';
-      action.disabled = !editable || (!equipped && selected.length >= SKILL_SLOT_LIMIT);
+      action.textContent = !learned ? 'LOCKED' : !editable ? 'CAMP ONLY' : equipped ? 'UNEQUIP' : selected.length >= SKILL_SLOT_LIMIT ? 'SLOTS FULL' : 'EQUIP';
+      action.disabled = !learned || !editable || (!equipped && selected.length >= SKILL_SLOT_LIMIT);
       action.setAttribute('aria-label', `${equipped ? 'Unequip' : 'Equip'} ${skill.name}`);
       action.addEventListener('click', event => {
-        if (!this.canModify()) return;
+        if (!this.canModify() || !this.progression.canUseSkill(skill.id)) return;
         event.preventDefault();
         event.stopPropagation();
         const current = this.skills.equipped;
@@ -141,13 +144,13 @@ export class SkillLoadoutUI {
           const option = document.createElement('option');
           option.value = support.id;
           option.textContent = `${support.name} · ${support.description}`;
-          option.disabled = selected.some(other =>
+          option.disabled = !this.progression.canUseSupport(support.id) || selected.some(other =>
             other.id !== skill.id && this.skills.supportFor(other.id)?.id === support.id);
           select.append(option);
         }
         select.value = this.skills.supportFor(skill.id)?.id ?? '';
         select.addEventListener('change', () => {
-          if (!this.canModify()) return;
+          if (!this.canModify() || (select.value && !this.progression.canUseSupport(select.value))) return;
           this.skills.setSupport(skill.id, select.value || null);
           this.render();
         });
