@@ -123,7 +123,7 @@ export class DungeonScene extends Phaser.Scene {
     this.debugGraphics = this.add.graphics().setDepth(35).setVisible(false);
     this.routeGraphics = this.add.graphics().setDepth(34).setVisible(false);
     this.marker = this.add.circle(0, 0, 12, 0xd9b56c, 0.22).setStrokeStyle(2, 0xeacb85).setVisible(false).setDepth(26);
-    this.explorationView = new ExplorationView(this, this.dungeon, this.exploration, this.movement.position, this.optionalObjectives);
+    this.explorationView = new ExplorationView(this, this.dungeon, this.exploration, this.movement.position, this.optionalObjectives, this.extraction);
     this.cameras.main.setBounds(0, 0, this.grid.width, this.grid.height);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
     this.cameras.main.setZoom(this.zoom);
