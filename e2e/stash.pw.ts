@@ -153,6 +153,6 @@ test('failed stash save leaves Finish action usable and does not fake victory', 
   });
   await tap(page, finish);
   await expect(page.locator('#ashen-victory-overlay')).toBeVisible();
-  await expect(page.locator('#ashen-victory-overlay')).toContainText('1 items secured');
+  await expect(page.locator('#ashen-victory-overlay')).toContainText('1 item secured');
   expect(errors).toEqual([]);
 });
