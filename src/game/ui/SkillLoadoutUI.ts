@@ -1,9 +1,9 @@
-import { ACTIVE_SKILLS, SKILL_SLOT_LIMIT, type AutoSkillDefinition, type AutoSkillSystem } from '../combat/AutoSkillSystem';
+import { ACTIVE_SKILLS, SKILL_SLOT_LIMIT, SKILL_SUPPORTS, type AutoSkillDefinition, type AutoSkillSystem } from '../combat/AutoSkillSystem';
 
 /**
  * Expedition-only active skill selection. No purchased/unlocked skills or
  * persistent character progression are introduced in this milestone.
- * The simulation pauses while the dialog is open.
+ * The simulation pauses while the dialog is open. Supports have one socket per\n * equipped skill and are exclusive by support ID within a loadout.
  */
 export class SkillLoadoutUI {
   private readonly toggle: HTMLButtonElement;
@@ -52,7 +52,7 @@ export class SkillLoadoutUI {
 
     const description = document.createElement('p');
     description.className = 'ashen-skills-description';
-    description.textContent = 'Equip up to two different skills at entrance camp. They cast automatically on enemies in range. You may inspect your loadout later, but changes must wait for your next expedition.';
+    description.textContent = 'Equip up to two different skills at entrance camp. They cast automatically on enemies in range. Attach one trade-off support per equipped skill. Each support can be assigned to only one skill. You may inspect your loadout later, but changes must wait for your next expedition.';
     const summary = document.createElement('p');
     summary.id = 'ashen-skills-summary';
     summary.className = 'ashen-skills-summary';
@@ -96,7 +96,16 @@ export class SkillLoadoutUI {
       name.textContent = skill.name;
       const stats = document.createElement('span');
       stats.textContent = `${skill.damage} damage · ${skill.radius}px area · ${skill.range}px range · ${skill.cooldownSeconds}s cooldown`;
-      details.append(name, stats);
+      if (equipped) {
+        const effective = this.skills.effectiveStats(skill.id);
+        stats.textContent = `${effective.damage} damage · ${effective.radius}px area · ${effective.range}px range · ${effective.cooldownSeconds}s cooldown`;
+        const supportDescription = document.createElement('span');
+        supportDescription.className = 'ashen-skill-support-detail';
+        supportDescription.textContent = this.skills.supportFor(skill.id)?.description ?? 'No support modifier';
+        details.append(name, stats, supportDescription);
+      } else {
+        details.append(name, stats);
+      }
 
       const action = document.createElement('button');
       action.type = 'button';
@@ -116,6 +125,35 @@ export class SkillLoadoutUI {
         this.render();
       });
       card.append(details, action);
+      if (equipped) {
+        const supportRow = document.createElement('label');
+        supportRow.className = 'ashen-skill-support-row';
+        supportRow.textContent = 'Support modifier';
+        const select = document.createElement('select');
+        select.className = 'ashen-skill-support-select';
+        select.setAttribute('aria-label', `Support for ${skill.name}`);
+        select.disabled = !editable;
+        const none = document.createElement('option');
+        none.value = '';
+        none.textContent = 'None';
+        select.append(none);
+        for (const support of SKILL_SUPPORTS) {
+          const option = document.createElement('option');
+          option.value = support.id;
+          option.textContent = `${support.name} · ${support.description}`;
+          option.disabled = selected.some(other =>
+            other.id !== skill.id && this.skills.supportFor(other.id)?.id === support.id);
+          select.append(option);
+        }
+        select.value = this.skills.supportFor(skill.id)?.id ?? '';
+        select.addEventListener('change', () => {
+          if (!this.canModify()) return;
+          this.skills.setSupport(skill.id, select.value || null);
+          this.render();
+        });
+        supportRow.append(select);
+        card.append(supportRow);
+      }
       this.list.append(card);
     }
   }
