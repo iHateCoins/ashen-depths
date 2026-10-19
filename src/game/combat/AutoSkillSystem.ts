@@ -10,20 +10,6 @@ export interface AutoSkillDefinition {
   readonly cooldownSeconds: number;
 }
 
-export const SKILL_SLOT_LIMIT = 2;
-
-export const FROST_BLOOM: AutoSkillDefinition = {
-  id: 'frost-bloom', name: 'Frost Bloom', range: 170, radius: 140,
-  damage: 20, cooldownSeconds: 6,
-};
-
-export const ASH_LANCE: AutoSkillDefinition = {
-  id: 'ash-lance', name: 'Ash Lance', range: 320, radius: 28,
-  damage: 65, cooldownSeconds: 3.5,
-};
-
-export const ACTIVE_SKILLS: readonly AutoSkillDefinition[] = [CINDER_BURST, FROST_BLOOM, ASH_LANCE];
-
 export interface SkillHit {
   enemyId: number;
   damage: number;
@@ -47,6 +33,20 @@ export const CINDER_BURST: AutoSkillDefinition = {
   damage: 35,
   cooldownSeconds: 4,
 };
+
+export const SKILL_SLOT_LIMIT = 2;
+
+export const FROST_BLOOM: AutoSkillDefinition = {
+  id: 'frost-bloom', name: 'Frost Bloom', range: 170, radius: 140,
+  damage: 20, cooldownSeconds: 6,
+};
+
+export const ASH_LANCE: AutoSkillDefinition = {
+  id: 'ash-lance', name: 'Ash Lance', range: 320, radius: 28,
+  damage: 65, cooldownSeconds: 3.5,
+};
+
+export const ACTIVE_SKILLS: readonly AutoSkillDefinition[] = [CINDER_BURST, FROST_BLOOM, ASH_LANCE];
 
 /**
  * Skill logic is framework-independent. The scene owns presentation;
