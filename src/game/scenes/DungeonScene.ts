@@ -17,7 +17,9 @@ import { OptionalObjectiveDirector, type OptionalObjectiveKind } from '../dungeo
 import { OptionalObjectiveUI } from '../ui/OptionalObjectiveUI';
 import { ExpeditionLoot, type GroundLoot } from '../loot/ExpeditionLoot';
 import { LootUI } from '../ui/LootUI';
-import { EquipmentLoadout, mitigatedHitDamage } from '../loot/EquipmentLoadout';
+import { EquipmentLoadout, EQUIPMENT_SLOTS, mitigatedHitDamage } from '../loot/EquipmentLoadout';
+import { SecuredStash } from '../loot/SecuredStash';
+import { StashUI } from '../ui/StashUI';
 import type { EquipmentSlot } from '../loot/ExpeditionLoot';
 
 const WORLD_WIDTH = 2304;
@@ -29,6 +31,7 @@ export class DungeonScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Container;
   private marker!: Phaser.GameObjects.Arc;
   private status!: Phaser.GameObjects.Text;
+  private titleLabel!: Phaser.GameObjects.Text;
   private zoom = 1;
   private grid!: NavigationGrid;
   private waypoints: Point[] = [];
@@ -59,6 +62,9 @@ export class DungeonScene extends Phaser.Scene {
   private objectiveLabel!: Phaser.GameObjects.Text;
   private loot!: ExpeditionLoot;
   private loadout!: EquipmentLoadout;
+  private securedStash!: SecuredStash;
+  private stashUi!: StashUI;
+  private campAvailable = true;
   private lootUi!: LootUI;
   private groundVisuals = new Map<string, Phaser.GameObjects.Container>();
   private victoryOverlay!: ResultOverlay;
@@ -77,6 +83,8 @@ export class DungeonScene extends Phaser.Scene {
     this.optionalObjectives = new OptionalObjectiveDirector(this.dungeon, this.roomEncounters);
     this.loot = new ExpeditionLoot(this.dungeon.seed);
     this.loadout = new EquipmentLoadout(this.loot);
+    this.securedStash = new SecuredStash();
+    this.campAvailable = true;
     this.groundVisuals.clear();
     this.renderDungeon();
     this.renderOptionalMarkers();
@@ -145,15 +153,15 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.add.text(14, 0, 'ASHEN DEPTHS · M04 / PR02', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M04 / PR03', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
-    this.status.setY(32);
+    this.status.setY(198).setVisible(false);
     this.dungeonSeedLabel = this.add.text(14, 0, `DUNGEON SEED: ${this.dungeon.seed}`, {
       fontFamily:'Arial, sans-serif',fontSize:'12px',color:'#aab9b5',
       backgroundColor:'#10171bcc',padding:{x:10,y:6},
     }).setScrollFactor(0).setDepth(100);
-    this.healthLabel = this.add.text(14, 90, 'HP: 100 / 100', {fontFamily:'Arial, sans-serif',fontSize:'19px',color:'#f5c0b0',backgroundColor:'#10171bcc',padding:{x:10,y:7}}).setScrollFactor(0).setDepth(105);
-    this.objectiveLabel = this.add.text(14, 126, 'GOAL: FIND THE DEEP CHAMBER', {
+    this.healthLabel = this.add.text(14, 40, 'HP: 100 / 100', {fontFamily:'Arial, sans-serif',fontSize:'19px',color:'#f5c0b0',backgroundColor:'#10171bcc',padding:{x:10,y:7}}).setScrollFactor(0).setDepth(105);
+    this.objectiveLabel = this.add.text(14, 81, 'FIND THE DEEP CHAMBER', {
       fontFamily:'Arial, sans-serif',fontSize:'16px',color:'#f2d6a5',
       backgroundColor:'#10171bcc',padding:{x:10,y:7},
     }).setScrollFactor(0).setDepth(105);
@@ -171,6 +179,7 @@ export class DungeonScene extends Phaser.Scene {
       id => this.equipBagItem(id),
       slot => this.unequipGear(slot),
     );
+    this.stashUi = new StashUI(this.securedStash, this.loot, id => this.withdrawFromStash(id));
     this.defeatOverlay = new ResultOverlay('defeat', () => this.scene.restart());
     this.victoryOverlay = new ResultOverlay('victory', () => this.scene.restart());
     const defeatOverlay = this.defeatOverlay;
@@ -178,12 +187,14 @@ export class DungeonScene extends Phaser.Scene {
     const explorationView = this.explorationView;
     const optionalUi = this.optionalUi;
     const lootUi = this.lootUi;
+    const stashUi = this.stashUi;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       defeatOverlay.destroy();
       victoryOverlay.destroy();
       explorationView.destroy();
       optionalUi.destroy();
       lootUi.destroy();
+      stashUi.destroy();
     });
     this.debugButton = this.add.text(0, 8, 'DEBUG: OFF', {fontFamily:'Arial, sans-serif',fontSize:'14px',color:'#e3c99c',backgroundColor:'#243136',padding:{x:10,y:8}}).setScrollFactor(0).setDepth(110).setInteractive();
     this.debugButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); this.toggleDebug(); });
@@ -311,11 +322,20 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   private refreshHud(): void {
-    this.status.setWordWrapWidth(Math.max(240, this.scale.width - 28));
-    this.debugButton?.setX(Math.max(8, this.scale.width - 130));
-    this.skillStatusLabel?.setY(Math.max(152, this.scale.height - 46));
-    this.dungeonSeedLabel?.setY(Math.max(192, this.scale.height - 77));
-
+    const width = this.scale.width;
+    const height = this.scale.height;
+    // Screenshot-driven readability pass: the left HUD never extends into
+    // the fixed 192px minimap at the upper right on narrow iPhone layouts.
+    const hudWidth = Math.max(110, Math.min(410, width - this.dungeon.columns * 2 - 48));
+    this.titleLabel.setFontSize(width < 800 ? 17 : 20);
+    this.healthLabel.setY(38).setFontSize(width < 520 ? 16 : 19);
+    this.objectiveLabel.setY(79).setFontSize(width < 800 ? 14 : 16)
+      .setWordWrapWidth(hudWidth);
+    this.status.setWordWrapWidth(hudWidth).setVisible(this.debug.visible);
+    this.debugButton?.setX(Math.max(8, width - 146)).setVisible(width >= 900);
+    this.skillStatusLabel?.setY(Math.max(152, height - (width < 600 ? 150 : 46)));
+    this.dungeonSeedLabel?.setY(Math.max(192, height - 77))
+      .setVisible(width >= 600 || this.debug.visible);
   }
 
   private toggleDebug(): void {
@@ -323,6 +343,8 @@ export class DungeonScene extends Phaser.Scene {
     this.debugButton.setText(this.debug.visible ? 'DEBUG: ON' : 'DEBUG: OFF');
     this.debugGraphics.setVisible(this.debug.visible);
     this.routeGraphics.setVisible(this.debug.visible);
+    this.status.setVisible(this.debug.visible);
+    this.refreshHud();
     this.debugGraphics.clear();
     if (this.debug.visible) {
       this.debugGraphics.lineStyle(1, 0x75a5b2, 0.15);
@@ -414,6 +436,50 @@ export class DungeonScene extends Phaser.Scene {
     this.groundVisuals.set(drop.id, visual);
   }
 
+  private withdrawFromStash(id: string): void {
+    if (this.health.defeated || this.finalized || !this.campAvailable || this.loot.bagFull) return;
+    const item = this.securedStash.withdraw(id);
+    if (!item) return;
+    // The persistent transaction succeeds BEFORE the insecure bag is mutated.
+    this.loot.bag.push(item);
+    this.refreshLootPrompt();
+    this.stashUi.refresh(this.campAvailable, this.loot.bagFull);
+    this.updateObjectiveStatus();
+  }
+
+  private secureAndFinish(): void {
+    if (this.health.defeated || this.finalized || !this.roomEncounters.completed) return;
+    const items = [
+      ...this.loot.bag,
+      ...EQUIPMENT_SLOTS.map(slot => this.loadout.get(slot)).filter(
+        (item): item is NonNullable<typeof item> => item !== null,
+      ),
+    ];
+    const result = this.securedStash.secureExpedition(items);
+    if (!result.ok) {
+      const message = result.reason === 'storage-full'
+        ? 'Stash full: no items saved. Gear remains in this run.'
+        : result.reason === 'storage-corrupt'
+          ? 'Stored stash data is invalid. Nothing overwritten or lost from this run.'
+          : result.reason === 'invalid-items'
+            ? 'Item validation failed. Nothing secured; your run remains playable.'
+            : 'On-device save failed. Gear remains in this run. Enable browser storage and retry.';
+      this.lootUi.showFinishError(message);
+      return;
+    }
+    this.finalized = true;
+    this.updateObjectiveStatus();
+    this.optionalUi.hide();
+    this.stashUi.hideForResult();
+    this.lootUi.hideForResult();
+    this.movement.stop();
+    this.waypoints = [];
+    this.marker.setVisible(false);
+    this.victoryOverlay.show(
+      `${result.saved} item${result.saved === 1 ? '' : 's'} secured to this device's stash. ${this.securedStash.count} stored. New expedition awaits.`,
+    );
+  }
+
   private recalculateEquipment(): void {
     const stats = this.loadout.stats;
     // Ember Edge and weapon/affix attack bonuses are independent and stack.
@@ -482,16 +548,10 @@ export class DungeonScene extends Phaser.Scene {
     const guardianAlive = this.roomEncounters.guardianAlive(this.enemies);
     const localHostiles = this.roomEncounters.roomHostiles(room, this.enemies);
     const alive = this.enemies.filter(enemy => enemy.hp > 0).length;
-    let objective: string;
-    if (this.roomEncounters.completed) {
-      objective = 'DEPTH CLEARED · WARDEN DEFEATED';
-    } else if (this.roomEncounters.hasEnteredDepth) {
-      objective = guardianAlive ? 'DEEP CHAMBER · DEFEAT THE WARDEN' : 'DEEP CHAMBER · WARDEN FALLEN';
-    } else {
-      objective = 'EXPLORE · FIND THE DEEP CHAMBER';
-    }
     const worn = this.loadout.stats;
-    this.objectiveLabel.setText(`${objective}\n${alive} enemies alive · ${localHostiles} from this room\nBag ${this.loot.bag.length}/${this.loot.capacity} · Side ${this.optionalObjectives.claimedCount}/${this.optionalObjectives.totalCount}\nGear ${this.loadout.equippedCount}/3 · Attack +${this.combat.bonusDamage} · Spell +${worn.spell} · Armor ${worn.armor}`);
+    const shortObjective = this.roomEncounters.completed ? 'WARDEN DEFEATED'
+      : this.roomEncounters.hasEnteredDepth ? 'DEFEAT THE WARDEN' : 'FIND THE DEEP CHAMBER';
+    this.objectiveLabel.setText(`${shortObjective}\n${alive} foes · ${localHostiles} local · ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} rooms\nBag ${this.loot.bag.length}/${this.loot.capacity} · Side ${this.optionalObjectives.claimedCount}/${this.optionalObjectives.totalCount}\nGear ${this.loadout.equippedCount}/3 · A+${this.combat.bonusDamage} · S+${worn.spell} · Armor ${worn.armor}`);
     document.documentElement.dataset.ashenEncounter = this.roomEncounters.completed ? 'complete' : 'explore';
     document.documentElement.dataset.ashenGuardianAlive = String(guardianAlive);
     document.documentElement.dataset.ashenEnemyCount = String(alive);
@@ -502,6 +562,9 @@ export class DungeonScene extends Phaser.Scene {
     document.documentElement.dataset.ashenArmor = String(worn.armor);
     document.documentElement.dataset.ashenSpellBonus = String(worn.spell);
     document.documentElement.dataset.ashenMaxHp = String(this.health.maxHp);
+    document.documentElement.dataset.ashenStashCount = String(this.securedStash.count);
+    document.documentElement.dataset.ashenStashStatus = this.securedStash.status;
+    document.documentElement.dataset.ashenCampOpen = String(this.campAvailable);
   }
 
   private renderAttackWarnings(): void {
@@ -550,13 +613,17 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    if(this.health.defeated || this.finalized || this.lootUi.isOpen) return;
+    if(this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen) return;
     const oldX = this.movement.position.x;
     const oldY = this.movement.position.y;
     this.movement.update(delta / 1000);
     if (!this.movement.destination && this.waypoints.length) this.movement.moveTo(this.waypoints.shift()!);
     const { x, y } = this.movement.position;
     this.player.setPosition(x, y);
+    if (this.campAvailable && (
+      Math.hypot(x - this.dungeon.entrance.x, y - this.dungeon.entrance.y) > 155 || this.kills > 0
+    )) this.campAvailable = false;
+    this.stashUi.refresh(this.campAvailable, this.loot.bagFull);
     const explorationDelta = this.exploration.update(this.movement.position);
     if (explorationDelta.movedCell) {
       this.explorationView.refresh(this.movement.position);
@@ -618,14 +685,7 @@ export class DungeonScene extends Phaser.Scene {
       // Winning is not the same as extracting. Let the player pick up Warden
       // loot and inspect the bag before deliberately finishing the run.
       this.showCombatText(this.movement.position, 'WARDEN DEFEATED', '#f5d7a4');
-      this.lootUi.enableFinish(() => {
-        this.finalized = true;
-        this.optionalUi.hide();
-        this.victoryOverlay.show();
-        this.movement.stop();
-        this.waypoints = [];
-        this.marker.setVisible(false);
-      });
+      this.lootUi.enableFinish(() => this.secureAndFinish());
     }
     this.updateObjectiveStatus();
     this.refreshOptionalPrompt();
@@ -633,6 +693,7 @@ export class DungeonScene extends Phaser.Scene {
     if(this.health.defeated) {
       this.movement.stop();this.waypoints=[];this.marker.setVisible(false);
       this.lootUi.hideForResult();
+      this.stashUi.hideForResult();
       this.defeatOverlay.show();
     }
     if (this.debug.visible) this.redrawRoute();

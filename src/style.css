@@ -263,3 +263,99 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
 @media (max-width:380px) {
   .ashen-equipment-list {grid-template-columns:1fr;}
 }
+
+/* M04 PR03: persistent stash is a separate, safe inventory surface. */
+.ashen-stash-toggle {
+  position:fixed;
+  right:max(155px,calc(155px + env(safe-area-inset-right)));
+  bottom:calc(35px + env(safe-area-inset-bottom));
+  z-index:1190;
+  min-height:41px;
+  border:1px solid #9cbdaf;border-radius:7px;
+  padding:9px 13px;
+  background:#283d38;color:#d4edda;
+  font:600 14px Arial,sans-serif;
+  cursor:pointer;touch-action:manipulation;
+}
+.ashen-stash-toggle[hidden]{display:none;}
+.ashen-stash-overlay {
+  position:fixed;inset:0;z-index:1890;
+  display:flex;justify-content:center;align-items:center;
+  box-sizing:border-box;
+  padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right))
+    max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));
+  background:#071318ee;
+  color:#f2e5ce;touch-action:auto;
+}
+.ashen-stash-overlay[hidden]{display:none;}
+.ashen-stash-panel {
+  width:min(680px,100%);height:min(560px,100%);
+  min-height:0;overflow-y:auto;overscroll-behavior:contain;
+  border:1px solid #71998b;border-radius:12px;
+  padding:14px 16px;box-sizing:border-box;
+  background:#192d2d;box-shadow:0 12px 38px #000d;
+  font:14px/1.4 Arial,sans-serif;
+  -webkit-overflow-scrolling:touch;touch-action:pan-y;
+}
+.ashen-stash-header{
+  display:flex;justify-content:space-between;align-items:center;gap:12px;
+}
+.ashen-stash-header h2{margin:0;font:26px Georgia,serif;}
+.ashen-stash-close,.ashen-stash-withdraw{
+  min-height:40px;border-radius:6px;padding:8px 12px;
+  border:1px solid #9cbcac;color:#e6f5e8;background:#365449;
+  font:600 13px Arial,sans-serif;
+  touch-action:manipulation;cursor:pointer;
+}
+.ashen-stash-withdraw:disabled{opacity:.45;cursor:default;}
+.ashen-stash-instructions{color:#d2d9c9;margin:10px 0;}
+.ashen-stash-count{color:#b6d6c8;font-weight:600;}
+.ashen-stash-items {
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;
+}
+.ashen-stash-item {
+  min-width:0;display:flex;justify-content:space-between;align-items:center;gap:9px;
+  padding:10px;border:1px solid #5b7670;border-radius:7px;background:#263b3b;
+}
+.ashen-stash-item-details{
+  display:flex;flex-direction:column;gap:3px;min-width:0;font-size:12px;
+  overflow-wrap:anywhere;
+}
+.ashen-stash-item-details strong{font-size:14px;}
+.ashen-stash-item-details span{color:#bcd3cb;}
+.ashen-stash-empty{grid-column:1/-1;color:#c5d3c7;}
+.ashen-finish-warning {
+  position:fixed;left:50%;bottom:calc(150px + env(safe-area-inset-bottom));
+  transform:translateX(-50%);z-index:1221;
+  width:min(400px,calc(100vw - 26px));box-sizing:border-box;
+  text-align:center;background:#3d2726f7;border:1px solid #db9e84;
+  border-radius:8px;padding:9px 13px;
+  color:#ffe4d4;font:13px/1.35 Arial,sans-serif;
+}
+.ashen-finish-warning[hidden]{display:none;}
+.ashen-stash-toggle:focus-visible,.ashen-stash-close:focus-visible,
+.ashen-stash-withdraw:focus-visible {outline:3px solid #f5d9a7;outline-offset:3px;}
+
+/* The screenshot exposed overlap between the top-left debug HUD, minimap and
+   centered Finish button. Put the finish action near the bottom instead. */
+.ashen-finish-run {
+  top:auto;
+  bottom:calc(91px + env(safe-area-inset-bottom));
+  min-height:44px;
+  max-width:calc(100vw - 32px);
+  padding:9px 18px;
+}
+@media(max-width:600px) {
+  .ashen-stash-items{grid-template-columns:1fr;}
+  .ashen-stash-panel{padding:10px 12px;}
+  .ashen-stash-header h2{font-size:22px;}
+  .ashen-stash-toggle{right:calc(137px + env(safe-area-inset-right));padding:7px 10px;font-size:12px;}
+  .ashen-finish-run{bottom:calc(90px + env(safe-area-inset-bottom));font-size:13px;}
+}
+@media(max-height:430px) {
+  .ashen-stash-toggle{bottom:calc(30px + env(safe-area-inset-bottom));}
+  /* In iPhone landscape, keep Finish above STASH and BAG rather than
+     sharing the same bottom row at narrow viewport widths. */
+  .ashen-finish-run{bottom:calc(87px + env(safe-area-inset-bottom));}
+  .ashen-finish-warning{bottom:calc(138px + env(safe-area-inset-bottom));}
+}
