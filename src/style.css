@@ -354,6 +354,8 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
 }
 @media(max-height:430px) {
   .ashen-stash-toggle{bottom:calc(30px + env(safe-area-inset-bottom));}
-  .ashen-finish-run{bottom:calc(25px + env(safe-area-inset-bottom));}
-  .ashen-finish-warning{bottom:calc(78px + env(safe-area-inset-bottom));}
+  /* In iPhone landscape, keep Finish above STASH and BAG rather than
+     sharing the same bottom row at narrow viewport widths. */
+  .ashen-finish-run{bottom:calc(87px + env(safe-area-inset-bottom));}
+  .ashen-finish-warning{bottom:calc(138px + env(safe-area-inset-bottom));}
 }
