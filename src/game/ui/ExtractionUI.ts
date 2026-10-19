@@ -15,6 +15,7 @@ export class ExtractionUI {
   private phase: ExtractionPhase = 'idle';
   private enabled = true;
   private signature = '';
+  private errorMessage = '';
 
   constructor(
     private readonly begin: (siteId: string) => void,
@@ -36,6 +37,7 @@ export class ExtractionUI {
       event.preventDefault();
       event.stopPropagation();
       if (!this.enabled || !this.siteId) return;
+      this.errorMessage = '';
       if (this.phase === 'channeling') this.cancel();
       else this.begin(this.siteId);
     });
@@ -70,14 +72,15 @@ export class ExtractionUI {
       : 'Leave now with worn and carried gear, or explore deeper for more loot.';
     this.action.textContent = phase === 'channeling' ? 'CANCEL ESCAPE' : 'EXTRACT NOW';
     this.action.disabled = !enabled;
-    this.notice.textContent = enabled
+    this.notice.textContent = this.errorMessage || (enabled
       ? phase === 'channeling'
         ? 'Taking damage, moving away, or opening your bag interrupts extraction.'
         : `Hold the waystone for ${EXTRACTION_SECONDS.toFixed(1)}s. No room clearing required.`
-      : 'Extraction is unavailable after the Warden has fallen.';
+      : 'Extraction is unavailable after the Warden has fallen.');
   }
 
   showError(message: string): void {
+    this.errorMessage = message;
     this.notice.textContent = message;
     this.root.hidden = false;
     this.signature = '';
@@ -87,6 +90,7 @@ export class ExtractionUI {
     if (this.root.hidden) return;
     this.root.hidden = true;
     this.siteId = null;
+    this.errorMessage = '';
     this.signature = '';
   }
 
