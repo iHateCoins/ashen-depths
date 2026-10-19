@@ -59,7 +59,7 @@ test('enemy drops real loot, pickup/inspect/discard use mobile touch and restart
   await expect(modal).toBeVisible();
   await expect(modal).toContainText('UNSECURED LOOT');
   await expect(modal.locator('.ashen-bag-item')).toHaveCount(1);
-  await expect(modal.locator('.ashen-bag-item-details')).toContainText(/(weapon|armor|charm)/i);
+  await expect(modal.locator('.ashen-bag-item .ashen-bag-item-details')).toContainText(/(weapon|armor|charm)/i);
 
   // Native item drop button frees the slot, without duplicating the item.
   const discard = modal.getByRole('button', { name: /^Drop /i });
