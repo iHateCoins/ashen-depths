@@ -17,7 +17,7 @@ import { OptionalObjectiveDirector, type OptionalObjectiveKind } from '../dungeo
 import { OptionalObjectiveUI } from '../ui/OptionalObjectiveUI';
 import { ExpeditionLoot, type GroundLoot } from '../loot/ExpeditionLoot';
 import { LootUI } from '../ui/LootUI';
-import { EquipmentLoadout } from '../loot/EquipmentLoadout';
+import { EquipmentLoadout, mitigatedHitDamage } from '../loot/EquipmentLoadout';
 import type { EquipmentSlot } from '../loot/ExpeditionLoot';
 
 const WORLD_WIDTH = 2304;
@@ -600,7 +600,7 @@ export class DungeonScene extends Phaser.Scene {
       const flash = this.add.circle(strike.center.x,strike.center.y,strike.radius,
         strike.hit ? 0xf26b57 : 0x89baa3,0.28).setDepth(12);
       this.tweens.add({targets:flash,alpha:0,scale:1.1,duration:240,onComplete:()=>flash.destroy()});
-      const mitigatedDamage = Math.max(1, strike.damage - this.loadout.stats.armor);
+      const mitigatedDamage = mitigatedHitDamage(strike.damage, this.loadout.stats.armor);
       if (strike.hit && this.health.damage(mitigatedDamage)) {
         this.cameras.main.shake(110,0.002);
         this.showDamage(this.movement.position,mitigatedDamage,'#ff7777');
