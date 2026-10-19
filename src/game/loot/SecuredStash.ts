@@ -151,23 +151,6 @@ export class SecuredStash {
     return withdrawn;
   }
 
-  /**
-   * Return ONLY a previously withdrawn item during camp preparation.
-   * The scene owns the eligibility guard and removes it from the bag after a
-   * successful storage write; no dungeon drops may be deposited mid-run.
-   */
-  returnPreparedItem(item: LootItem): boolean {
-    if (this.state !== 'ready' || !validItem(item) ||
-        this.data.items.length >= STASH_CAPACITY ||
-        this.data.items.some(existing => existing.id === item.id)) return false;
-    const next: StashSnapshot = {
-      ...this.data,
-      revision: this.data.revision + 1,
-      items: [...this.data.items, cloneItem(item)],
-    };
-    return this.commit(next);
-  }
-
   private commit(next: StashSnapshot): boolean {
     if (this.state !== 'ready' || !this.storage) return false;
     try {
