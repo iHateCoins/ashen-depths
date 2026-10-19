@@ -98,7 +98,7 @@ test('Warden finish saves carried and equipped loot across restarts and page rel
   const vault = page.locator('#ashen-stash-overlay');
   await expect(vault).toBeVisible();
   await expect(vault.locator('.ashen-stash-item')).toHaveCount(2);
-  await expect(vault).toContainText('1 successful expeditions');
+  await expect(vault).toContainText('1 successful expedition');
   const withdraw = vault.getByRole('button', { name: /^Withdraw /i }).first();
   await expect(withdraw).toBeEnabled();
   await tap(page, withdraw);
