@@ -34,6 +34,7 @@ test('enemy drops real loot, pickup/inspect/discard use mobile touch and restart
   await expect(pickup).toBeVisible();
   if (test.info().project.name === 'desktop') await pickup.click();
   else {
+    await pickup.scrollIntoViewIfNeeded();
     const rect = await pickup.boundingBox();
     expect(rect).not.toBeNull();
     await page.touchscreen.tap(rect!.x + rect!.width / 2, rect!.y + rect!.height / 2);
@@ -48,6 +49,7 @@ test('enemy drops real loot, pickup/inspect/discard use mobile touch and restart
   await expect(bagButton).toBeVisible();
   if (test.info().project.name === 'desktop') await bagButton.click();
   else {
+    await bagButton.scrollIntoViewIfNeeded();
     const rect = await bagButton.boundingBox();
     expect(rect).not.toBeNull();
     await page.touchscreen.tap(rect!.x + rect!.width / 2, rect!.y + rect!.height / 2);
@@ -64,6 +66,7 @@ test('enemy drops real loot, pickup/inspect/discard use mobile touch and restart
   await expect(discard).toBeVisible();
   if (test.info().project.name === 'desktop') await discard.click();
   else {
+    await discard.scrollIntoViewIfNeeded();
     const rect = await discard.boundingBox();
     expect(rect).not.toBeNull();
     await page.touchscreen.tap(rect!.x + rect!.width / 2, rect!.y + rect!.height / 2);
@@ -72,6 +75,7 @@ test('enemy drops real loot, pickup/inspect/discard use mobile touch and restart
   const close = modal.getByRole('button', { name: 'CLOSE' });
   if (test.info().project.name === 'desktop') await close.click();
   else {
+    await close.scrollIntoViewIfNeeded();
     const rect = await close.boundingBox();
     expect(rect).not.toBeNull();
     await page.touchscreen.tap(rect!.x + rect!.width / 2, rect!.y + rect!.height / 2);
@@ -80,6 +84,7 @@ test('enemy drops real loot, pickup/inspect/discard use mobile touch and restart
   await expect(pickup).toBeVisible();
   if (test.info().project.name === 'desktop') await pickup.click();
   else {
+    await pickup.scrollIntoViewIfNeeded();
     const rect = await pickup.boundingBox();
     expect(rect).not.toBeNull();
     await page.touchscreen.tap(rect!.x + rect!.width / 2, rect!.y + rect!.height / 2);
@@ -147,6 +152,7 @@ test('Warden rare drop remains collectible before player chooses to finish the e
   const pickup = rare.getByRole('button', { name: 'PICK UP' });
   if (test.info().project.name === 'desktop') await pickup.click();
   else {
+    await pickup.scrollIntoViewIfNeeded();
     const box = await pickup.boundingBox();
     expect(box).not.toBeNull();
     await page.touchscreen.tap(box!.x + box!.width / 2, box!.y + box!.height / 2);
@@ -157,6 +163,7 @@ test('Warden rare drop remains collectible before player chooses to finish the e
   const finish = page.getByRole('button', { name: 'FINISH EXPEDITION' });
   if (test.info().project.name === 'desktop') await finish.click();
   else {
+    await finish.scrollIntoViewIfNeeded();
     const box = await finish.boundingBox();
     expect(box).not.toBeNull();
     await page.touchscreen.tap(box!.x + box!.width / 2, box!.y + box!.height / 2);
