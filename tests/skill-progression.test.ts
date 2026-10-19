@@ -82,6 +82,14 @@ describe('skill acquisition and secure extraction', () => {
     expect(corrupted.secureExpedition([]).ok).toBe(false);
   });
 
+  it('recognizes Crescent Cleave as a distinct earnable attack skill', () => {
+    const progression = new SkillProgression();
+    expect(progression.canUseSkill('crescent-cleave')).toBe(false);
+    progression.offer('cache');
+    expect(progression.choose('cache','skill:crescent-cleave')).toBe(true);
+    expect(progression.pendingUnlocks).toContain('skill:crescent-cleave');
+  });
+
   it('does not allow outdated tabs to overwrite successful skill unlocks', () => {
     const storage = new Storage();
     const first = new SecuredStash(storage);
