@@ -15,7 +15,8 @@ import { ExplorationTracker } from '../dungeon/ExplorationTracker';
 import { ExplorationView } from '../dungeon/ExplorationView';
 import { OptionalObjectiveDirector, type OptionalObjectiveKind } from '../dungeon/OptionalObjectiveDirector';
 import { OptionalObjectiveUI } from '../ui/OptionalObjectiveUI';
-import { ExpeditionLoot, type GroundLoot } from '../loot/ExpeditionLoot';
+import { ExpeditionLoot } from '../loot/ExpeditionLoot';
+import { groupGroundLoot, LOOT_CLUSTER_DISTANCE } from '../loot/LootPresentation';
 import { LootUI } from '../ui/LootUI';
 import { EquipmentLoadout, EQUIPMENT_SLOTS, mitigatedHitDamage } from '../loot/EquipmentLoadout';
 import { SecuredStash } from '../loot/SecuredStash';
@@ -161,7 +162,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M04 / PR04', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M04 / PR05', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(198).setVisible(false);
     this.dungeonSeedLabel = this.add.text(14, 0, `DUNGEON SEED: ${this.dungeon.seed}`, {
@@ -293,7 +294,7 @@ export class DungeonScene extends Phaser.Scene {
         .setStrokeStyle(3, cache ? 0xedc789 : 0xa7e7ce, 0.9).setDepth(3);
       // World markers remain below fog-of-war. Their visibility never spoils
       // unseen chambers on the map or in the world.
-      const label = this.add.text(x, y + 38, cache ? 'SEALED · GUARDED' : 'SANCTUARY SHRINE', {
+      const label = this.add.text(x, y + 38, cache ? '' : 'SANCTUARY SHRINE', {
         fontFamily: 'Arial, sans-serif', fontSize: '12px',
         color: cache ? '#f5d4a0' : '#a9ead1',
         stroke: '#101719', strokeThickness: 3,
@@ -312,10 +313,6 @@ export class DungeonScene extends Phaser.Scene {
         .setStrokeStyle(2, 0xcaf3f4, 0.85).setDepth(4);
       this.add.star(x, y, 4, 8, 17, 0xa6eef2, 0.85)
         .setStrokeStyle(2, 0x2b6e7c, 0.9).setDepth(5);
-      this.add.text(x, y + 48, 'WAYSTONE · EXTRACTION', {
-        fontFamily: 'Arial, sans-serif', fontSize: '12px',
-        color: '#b1ecf2', stroke: '#10191e', strokeThickness: 3,
-      }).setOrigin(0.5).setDepth(5);
       ring.setData('waystone-site', site.id);
     }
   }
@@ -448,23 +445,40 @@ export class DungeonScene extends Phaser.Scene {
   }
 
 
-  private showGroundLoot(drop: GroundLoot): void {
-    const color = drop.item.rarity === 'rare' ? 0xf0c779
-      : drop.item.rarity === 'magic' ? 0x8ebcff : 0xcfd4d1;
-    const glow = this.add.circle(0, 0, 14, color, 0.25)
-      .setStrokeStyle(2, color, 0.8);
-    const symbol = this.add.star(0, -5, 4, 5, 10, color, 0.95)
-      .setStrokeStyle(1, 0x161d20, 0.9);
-    const label = this.add.text(0, 24, drop.item.name, {
-      fontFamily: 'Arial, sans-serif', fontSize: '12px',
-      color: drop.item.rarity === 'rare' ? '#f6d590'
-        : drop.item.rarity === 'magic' ? '#a9cafa' : '#d8e1de',
-      stroke: '#11181a', strokeThickness: 3,
-    }).setOrigin(0.5);
-    // Fog's world depth is 24; ground loot remains concealed until seen.
-    const visual = this.add.container(drop.position.x, drop.position.y,
-      [glow, symbol, label]).setDepth(7);
-    this.groundVisuals.set(drop.id, visual);
+  /**
+   * World drops are visually merged into compact rarity-colored piles rather
+   * than printing full item names across enemies, rooms, and waystone labels.
+   * The underlying individual loot items are unchanged and can be selected
+   * one at a time from the nearby-loot picker.
+   */
+  private refreshGroundVisuals(): void {
+    for (const visual of this.groundVisuals.values()) visual.destroy();
+    this.groundVisuals.clear();
+    for (const group of groupGroundLoot(
+      this.loot.ground, LOOT_CLUSTER_DISTANCE,
+      (from, to) => this.grid.isSegmentWalkable(from, to),
+    )) {
+      const color = group.topRarity === 'rare' ? 0xf0c779
+        : group.topRarity === 'magic' ? 0x8ebcff : 0xcfd4d1;
+      const glow = this.add.circle(0, 0, group.members.length > 1 ? 20 : 14,
+        color, 0.19).setStrokeStyle(2, color, 0.75);
+      const symbol = this.add.star(0, -3, 4, 5, 10, color, 0.95)
+        .setStrokeStyle(1, 0x161d20, 0.9);
+      const children: Phaser.GameObjects.GameObject[] = [glow, symbol];
+      if (group.members.length > 1) {
+        const count = this.add.text(17, -14, `×${group.members.length}`, {
+          fontFamily: 'Arial, sans-serif', fontSize: '12px',
+          fontStyle: 'bold', color: '#f2f4ed',
+          backgroundColor: '#152126df', padding: { x: 3, y: 1 },
+        }).setOrigin(0.2, 0.5);
+        children.push(count);
+      }
+      // Entire visual stays below fog of war (depth 24).
+      const visual = this.add.container(
+        group.position.x, group.position.y, children,
+      ).setDepth(7);
+      this.groundVisuals.set(group.id, visual);
+    }
   }
 
   private startExtraction(id: string): void {
@@ -590,8 +604,7 @@ export class DungeonScene extends Phaser.Scene {
       this.refreshLootPrompt();
       return;
     }
-    this.groundVisuals.get(id)?.destroy();
-    this.groundVisuals.delete(id);
+    this.refreshGroundVisuals();
     this.showCombatText(this.movement.position, 'ITEM COLLECTED', '#e4d3a4');
     this.refreshLootPrompt();
   }
@@ -599,14 +612,15 @@ export class DungeonScene extends Phaser.Scene {
   private discardBagItem(id: string): void {
     if (this.health.defeated) return;
     const drop = this.loot.discard(id, this.movement.position);
-    if (drop) this.showGroundLoot(drop);
+    if (drop) this.refreshGroundVisuals();
     this.refreshLootPrompt();
   }
 
   private refreshLootPrompt(): void {
     if (this.health.defeated) return;
-    this.lootUi.refresh(this.loot.nearby(this.movement.position,
-      (from, to) => this.grid.isSegmentWalkable(from, to)));
+    const nearby = this.loot.nearbyItems(this.movement.position,
+      (from, to) => this.grid.isSegmentWalkable(from, to));
+    this.lootUi.refresh(nearby[0] ?? null, nearby);
     document.documentElement.dataset.ashenBagCount = String(this.loot.bag.length);
     document.documentElement.dataset.ashenGroundCount = String(this.loot.ground.length);
   }
@@ -680,7 +694,7 @@ export class DungeonScene extends Phaser.Scene {
         const drop = this.loot.dropForEnemy(
           enemy.id, enemy.kind, placement?.guardian ?? false, enemy.position,
         );
-        if (drop) this.showGroundLoot(drop);
+        if (drop) this.refreshGroundVisuals();
       }
     }
   }

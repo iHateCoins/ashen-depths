@@ -132,17 +132,27 @@ export class ExpeditionLoot {
     return dropped;
   }
 
+  /**
+   * Return every individually reachable item in pickup range, ordered by
+   * distance then ID. Grouped world symbols never merge item ownership or
+   * bypass line-of-sight checks when the player chooses one to pick up.
+   */
+  nearbyItems(
+    player: Point,
+    canReach: (from: Point, to: Point) => boolean = () => true,
+  ): GroundLoot[] {
+    return this.ground.filter(drop =>
+      Math.hypot(player.x - drop.position.x, player.y - drop.position.y) <= PICKUP_RADIUS &&
+      canReach(player, drop.position)
+    ).sort((a, b) =>
+      Math.hypot(player.x - a.position.x, player.y - a.position.y) -
+      Math.hypot(player.x - b.position.x, player.y - b.position.y) ||
+      a.id.localeCompare(b.id)
+    );
+  }
+
   nearby(player: Point, canReach: (from: Point, to: Point) => boolean = () => true): GroundLoot | null {
-    let closest: GroundLoot | null = null;
-    let bestDistance = PICKUP_RADIUS;
-    for (const drop of this.ground) {
-      const distance = Math.hypot(player.x - drop.position.x, player.y - drop.position.y);
-      if (distance <= bestDistance && canReach(player, drop.position)) {
-        bestDistance = distance;
-        closest = drop;
-      }
-    }
-    return closest;
+    return this.nearbyItems(player, canReach)[0] ?? null;
   }
 
   pickUp(id: string, player: Point, canReach: (from: Point, to: Point) => boolean = () => true): PickupResult {
