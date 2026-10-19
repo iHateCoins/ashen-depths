@@ -9,7 +9,11 @@ export interface ItemAffix {
   label: string;
   value: number;
 }
+export type ForgeOutcome = 'reforged' | 'erased' | 'cursed';
 export interface LootItem {
+  /** An item can be forged only once across its entire lifetime, including extraction/withdrawal. */
+  forged?: true;
+  forgeOutcome?: ForgeOutcome;
   id: string;
   name: string;
   baseName: string;
