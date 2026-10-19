@@ -10,6 +10,20 @@ export interface AutoSkillDefinition {
   readonly cooldownSeconds: number;
 }
 
+export const SKILL_SLOT_LIMIT = 2;
+
+export const FROST_NOVA: AutoSkillDefinition = {
+  id: 'frost-nova', name: 'Frost Nova', range: 170, radius: 140,
+  damage: 20, cooldownSeconds: 6,
+};
+
+export const ASH_LANCE: AutoSkillDefinition = {
+  id: 'ash-lance', name: 'Ash Lance', range: 320, radius: 28,
+  damage: 65, cooldownSeconds: 3.5,
+};
+
+export const ACTIVE_SKILLS: readonly AutoSkillDefinition[] = [CINDER_BURST, FROST_NOVA, ASH_LANCE];
+
 export interface SkillHit {
   enemyId: number;
   damage: number;
@@ -42,9 +56,12 @@ export class AutoSkillSystem {
   private cooldowns = new Map<string, number>();
   /** Additive damage granted by worn equipment, never manually cast. */
   bonusDamage = 0;
-  readonly equipped: readonly AutoSkillDefinition[];
+  private equippedSkills: AutoSkillDefinition[];
+  get equipped(): readonly AutoSkillDefinition[] { return [...this.equippedSkills]; }
 
-  constructor(equipped: readonly AutoSkillDefinition[] = [CINDER_BURST]) {
+  /** Change loadout without refreshing the scene. Newly slotted skills begin ready. */
+  setEquipped(equipped: readonly AutoSkillDefinition[]): void {
+    if (equipped.length > SKILL_SLOT_LIMIT) throw new Error('Active skill slots full');
     const ids = new Set<string>();
     for (const skill of equipped) {
       if (ids.has(skill.id)) throw new Error(`Duplicate active skill: ${skill.id}`);
@@ -52,9 +69,15 @@ export class AutoSkillSystem {
         throw new Error(`Invalid auto skill definition: ${skill.id}`);
       }
       ids.add(skill.id);
-      this.cooldowns.set(skill.id, 0);
     }
-    this.equipped = [...equipped];
+    for (const id of this.cooldowns.keys()) if (!ids.has(id)) this.cooldowns.delete(id);
+    for (const id of ids) if (!this.cooldowns.has(id)) this.cooldowns.set(id, 0);
+    this.equippedSkills = [...equipped];
+  }
+
+  constructor(equipped: readonly AutoSkillDefinition[] = [CINDER_BURST]) {
+    this.equippedSkills = [];
+    this.setEquipped(equipped);
   }
 
   remaining(skillId: string): number {
