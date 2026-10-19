@@ -36,9 +36,12 @@ test('Sealed Cache discovery is at risk, retained only after extraction and usab
     scene.movement.stop(); scene.waypoints = [];
     scene.movement.position = { ...cache.position };
   });
-  await expect(page.locator('#ashen-optional-objective')).toBeVisible({ timeout: 12_000 });
   const objectiveTab = page.locator('#ashen-interaction-objective');
+  await expect.poll(async () =>
+    await page.locator('#ashen-optional-objective').isVisible() || await objectiveTab.isVisible(),
+  { timeout: 12_000 }).toBe(true);
   if (await objectiveTab.isVisible()) await objectiveTab.click();
+  await expect(page.locator('#ashen-optional-objective')).toBeVisible();
   await page.getByRole('button', { name: 'OPEN CACHE' }).click();
   await expect(page.locator('#ashen-reward-toggle')).toBeVisible({ timeout: 12_000 });
   await page.locator('#ashen-reward-toggle').click();
