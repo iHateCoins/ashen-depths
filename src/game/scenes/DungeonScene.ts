@@ -166,7 +166,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M05 / PR01', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M05 / PR02', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(198).setVisible(false);
     this.dungeonSeedLabel = this.add.text(14, 0, `DUNGEON SEED: ${this.dungeon.seed}`, {
@@ -776,7 +776,8 @@ export class DungeonScene extends Phaser.Scene {
     this.skillStatusLabel.setText(this.skills.equipped.length
       ? this.skills.equipped.map(skill => {
         const remaining = this.skills.remaining(skill.id);
-        return `${skill.name.toUpperCase()}: ${remaining <= 0.01 ? 'READY' : `${remaining.toFixed(1)}s`}`;
+        const support = this.skills.supportFor(skill.id);
+        return `${skill.name.toUpperCase()}${support ? ' + ' + support.name.toUpperCase() : ''}: ${remaining <= 0.01 ? 'READY' : `${remaining.toFixed(1)}s`}`;
       }).join('\n') : 'NO ACTIVE SKILLS');
     for (const strike of updateEnemyAgents(this.enemies,this.movement.position,this.grid,delta/1000)) {
       const flash = this.add.circle(strike.center.x,strike.center.y,strike.radius,
