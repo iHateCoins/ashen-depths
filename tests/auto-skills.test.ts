@@ -144,6 +144,7 @@ describe('automatic skill selection', () => {
     expect(system.supportFor(CINDER_BURST.id)?.id).toBe('focused-power');
     system.setSupport(FROST_BLOOM.id, 'swift-casting');
     system.setSupport(CINDER_BURST.id, null);
+    system.setSupport(FROST_BLOOM.id, null);
     system.setSupport(CINDER_BURST.id, 'swift-casting');
   });
 
