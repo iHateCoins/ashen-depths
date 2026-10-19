@@ -24,7 +24,7 @@ export const UNLOCK_CHOICES: readonly UnlockChoice[] = [
 export const FORGE_EMBER_CHOICE: UnlockChoice = {
   id: 'forge:ember',
   label: 'Forge Ember',
-  description: 'REPEATABLE · Secure one Forge Ember on extraction; at camp, reroll one affix on stored magic or rare gear. The result may be stronger or weaker.',
+  description: 'REPEATABLE · Secure one Forge Ember on extraction; at camp, reroll one affix on stored magic or rare gear. 25% affix loss, 20% inverted penalty, 55% reroll. One lifetime attempt per item; forge only after extracting and starting your next expedition.',
   kind: 'forge',
 };
 
