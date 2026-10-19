@@ -51,7 +51,11 @@ test('skill supports change effective stats and cannot duplicate across skills',
 
   await tap(page, modal.getByRole('button', { name: 'Equip Frost Bloom' }));
   const frost = modal.getByRole('combobox', { name: 'Support for Frost Bloom' });
-  await expect(frost.locator('option[value="focused-power"]')).toBeDisabled();
+  // Playwright's toBeDisabled() checks the parent select for an <option>
+  // in some engines, even when that option carries its own disabled flag.
+  // Assert the option's DOM property, which is the actual selection gate.
+  await expect(frost.locator('option[value="focused-power"]'))
+    .toHaveJSProperty('disabled', true);
   await frost.selectOption('swift-casting');
   const current = await snapshot(page);
   expect(current.equipped).toEqual(['cinder-burst', 'frost-bloom']);
