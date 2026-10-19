@@ -1,4 +1,4 @@
-export type ResultKind = 'victory' | 'defeat';
+export type ResultKind = 'victory' | 'defeat' | 'extraction';
 
 /**
  * Screen-fixed result UI deliberately lives outside Phaser's canvas.
@@ -11,9 +11,10 @@ export class ResultOverlay {
   private readonly description: HTMLElement;
 
   constructor(kind: ResultKind, restart: () => void) {
-    const won = kind === 'victory';
+    const won = kind !== 'defeat';
+    const escaped = kind === 'extraction';
     const root = document.createElement('section');
-    root.id = won ? 'ashen-victory-overlay' : 'ashen-defeat-overlay';
+    root.id = escaped ? 'ashen-extraction-overlay' : won ? 'ashen-victory-overlay' : 'ashen-defeat-overlay';
     root.className = 'ashen-result-overlay';
     root.hidden = true;
     root.setAttribute('role', 'dialog');
@@ -23,12 +24,12 @@ export class ResultOverlay {
     panel.className = 'ashen-result-panel';
 
     const title = document.createElement('h2');
-    title.id = won ? 'ashen-victory-title' : 'ashen-defeat-title';
-    title.textContent = won ? 'WARDEN DEFEATED' : 'YOU HAVE FALLEN';
+    title.id = escaped ? 'ashen-extraction-title' : won ? 'ashen-victory-title' : 'ashen-defeat-title';
+    title.textContent = escaped ? 'ESCAPED ALIVE' : won ? 'WARDEN DEFEATED' : 'YOU HAVE FALLEN';
     root.setAttribute('aria-labelledby', title.id);
 
     const description = document.createElement('p');
-    description.textContent = won ? 'The deep chamber is conquered. Begin a new expedition.' : 'Your expedition has ended';
+    description.textContent = escaped ? 'You survived the expedition with your secured gear.' : won ? 'The deep chamber is conquered. Begin a new expedition.' : 'Your expedition has ended';
 
     const button = document.createElement('button');
     button.type = 'button';
