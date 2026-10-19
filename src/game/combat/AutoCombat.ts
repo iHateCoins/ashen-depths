@@ -21,7 +21,8 @@ export class AutoCombat {
         return da-db || a.id-b.id;
       })[0];
     if (!target) return [];
-    const totalDamage = this.damage + this.bonusDamage;
+    // Cursed Attack Power cannot heal an enemy with a negative attack.
+    const totalDamage = Math.max(1, this.damage + this.bonusDamage);
     target.hp = Math.max(0,target.hp-totalDamage);
     this.cooldown = this.interval;
     return [{targetId:target.id,damage:totalDamage}];

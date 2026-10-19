@@ -23,6 +23,9 @@ export class StashUI {
   private readonly instructions: HTMLElement;
   private readonly count: HTMLElement;
   private readonly onWithdraw: (id: string) => void;
+  private readonly onReforge: (id: string, affixIndex: number) => boolean;
+  private forgeNotice = '';
+  private armedForge: { id: string; index: number } | null = null;
   private open = false;
   private canWithdraw = false;
   private isBagFull = false;
@@ -32,8 +35,10 @@ export class StashUI {
     private readonly stash: SecuredStash,
     private readonly loot: ExpeditionLoot,
     onWithdraw: (id: string) => void,
+    onReforge: (id: string, affixIndex: number) => boolean,
   ) {
     this.onWithdraw = onWithdraw;
+    this.onReforge = onReforge;
     this.toggle = element('button', 'ashen-stash-toggle', 'STASH');
     this.toggle.id = 'ashen-stash-toggle';
     this.toggle.type = 'button';
@@ -84,6 +89,7 @@ export class StashUI {
     this.open = false;
     this.overlay.hidden = true;
     this.lastSignature = '';
+    this.armedForge = null;
   }
 
   refresh(canWithdraw: boolean, bagFull: boolean): void {
@@ -91,6 +97,7 @@ export class StashUI {
     this.isBagFull = bagFull;
     const signature = [
       this.stash.status, this.stash.count, this.stash.completedExpeditions,
+      this.stash.forgeEmbers, this.stash.spendableForgeEmbers,
       canWithdraw, bagFull,
     ].join('|');
     if (this.lastSignature === signature) return;
@@ -114,9 +121,9 @@ export class StashUI {
     }
 
     this.instructions.textContent = this.canWithdraw
-      ? 'Preparing at the entrance: WITHDRAW moves an item from safety into this expedition. It can be lost if you die or abandon the run.'
-      : 'Stash view only. Return to camp on a new expedition to withdraw gear. Dungeon loot can only be deposited by finishing successfully.';
-    this.count.textContent = `${this.stash.count} secured items · ${this.stash.completedExpeditions} successful expedition${this.stash.completedExpeditions === 1 ? '' : 's'}`;
+      ? 'At entrance camp, WITHDRAW risks equipment in this expedition. FORGE is ONCE PER ITEM, permanently. 25% ERASE affix, 20% CURSE it (negative stat), 55% random reroll. Confirm the risk before committing 1 Ember; results save instantly. Embers earned during a run are usable next expedition.'
+      : 'View only after leaving camp. On your next expedition you can withdraw gear or spend secured Forge Embers on stored gear. Loot can only be secured through extraction.';
+    this.count.textContent = `${this.stash.count} secured items · ${this.stash.forgeEmbers} Forge Ember${this.stash.forgeEmbers === 1 ? '' : 's'} (${this.stash.spendableForgeEmbers} usable this run) · ${this.stash.completedExpeditions} successful expedition${this.stash.completedExpeditions === 1 ? '' : 's'}${this.forgeNotice ? ' · ' + this.forgeNotice : ''}`;
     this.items.replaceChildren();
     const items = this.stash.items;
     if (!items.length) {
@@ -135,8 +142,46 @@ export class StashUI {
       : item.rarity === 'magic' ? '#88b9f9' : '#ced3d4';
     const type = element('span', '', `${item.rarity.toUpperCase()} · ${item.slot.toUpperCase()} · LEVEL ${item.itemLevel}`);
     details.append(name, type);
-    for (const affix of item.affixes) {
-      details.append(element('span', '', `+${affix.value} ${affix.label}`));
+    if (item.forged) details.append(element('span', 'ashen-stash-forged',
+      `FORGED — ${item.forgeOutcome === 'erased' ? 'AFFIX ERASED' : item.forgeOutcome === 'cursed' ? 'CURSED' : 'REFORGED'} · No attempts remaining`));
+    for (const [index, affix] of item.affixes.entries()) {
+      const affixRow = element('div', 'ashen-stash-affix-row');
+      affixRow.append(element('span', '', `${affix.value >= 0 ? '+' : ''}${affix.value} ${affix.label}`));
+      const armed = this.armedForge?.id === item.id && this.armedForge.index === index;
+      const reforge = element('button', 'ashen-stash-reforge',
+        item.forged ? 'FORGED · NO ATTEMPTS' : armed ? 'CONFIRM FORGE RISK' : 'FORGE 1 EMBER');
+      reforge.type = 'button';
+      reforge.disabled = item.forged === true || !this.canWithdraw || this.stash.spendableForgeEmbers < 1;
+      reforge.setAttribute('aria-label', armed
+        ? `Confirm forge ${affix.label} on ${item.name}`
+        : `Reforge ${affix.label} on ${item.name}`);
+      reforge.title = item.forged ? 'Lifetime forge attempt already spent'
+        : !this.canWithdraw ? 'Only available at entrance camp'
+          : this.stash.spendableForgeEmbers < 1 ? 'Requires an Ember secured before this run'
+            : '25% removal, 20% negative stat, 55% random reroll. Permanent one-use attempt.';
+      reforge.addEventListener('click', () => {
+        if (item.forged || !this.canWithdraw || this.stash.spendableForgeEmbers < 1) return;
+        if (!armed) {
+          this.armedForge = { id: item.id, index };
+          this.forgeNotice = 'CONFIRM to risk erasing or cursing this affix. One attempt per item, forever.';
+          this.render();
+          return;
+        }
+        this.armedForge = null;
+        const ok = this.onReforge(item.id, index);
+        const result = this.stash.items.find(stored => stored.id === item.id);
+        this.forgeNotice = ok
+          ? result?.forgeOutcome === 'erased' ? 'AFFIX ERASED — item permanently forged'
+            : result?.forgeOutcome === 'cursed' ? 'CURSED — affix now applies a negative stat permanently'
+            : 'Affix rerolled — item permanently forged'
+          : 'Forge could not be saved; no Ember spent and attempt remains available';
+        this.lastSignature = '';
+        this.refresh(this.canWithdraw, this.loot.bagFull);
+      });
+      affixRow.append(reforge);
+      if (armed && !item.forged) affixRow.append(element('span', 'ashen-stash-forge-warning',
+        'Permanent: 25% erase · 20% curse · 55% reroll. No second chance.'));
+      details.append(affixRow);
     }
     const withdraw = element('button', 'ashen-stash-withdraw', 'WITHDRAW');
     withdraw.type = 'button';

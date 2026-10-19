@@ -1,8 +1,11 @@
-import type { LootItem } from './ExpeditionLoot';
+import { lootHash, type LootItem, type ItemAffix } from './ExpeditionLoot';
 import { isValidUnlockId, UNLOCK_CHOICES } from '../combat/SkillProgression';
 
 export const STASH_STORAGE_KEY = 'ashen-depths-stash-v1';
 export const STASH_CAPACITY = 500;
+export const MAX_FORGE_EMBERS = 999999;
+/** One-use forge attempt outcomes: 25% lose affix, 20% become cursed, 55% reroll. */
+export const FORGE_ODDS = { erased: 25, cursed: 20, reforged: 55 } as const;
 
 export interface StashStorage {
   getItem(key: string): string | null;
@@ -16,6 +19,8 @@ interface StashSnapshot {
   items: LootItem[];
   /** Absent in older schema-1 saves; treat as no learned skills. */
   unlocks?: string[];
+  /** Optional since pre-M05 PR06 saves predate the forge. */
+  forgeEmbers?: number;
 }
 
 export type StashStatus = 'ready' | 'unavailable' | 'corrupt';
@@ -38,13 +43,17 @@ function validItem(value: unknown): value is LootItem {
       !(['common','magic','rare'] as unknown[]).includes(item.rarity) ||
       !(['weapon','armor','charm'] as unknown[]).includes(item.slot) ||
       !Number.isInteger(item.itemLevel) || item.itemLevel! < 1 || item.itemLevel! > 1000 ||
-      !Array.isArray(item.affixes) || item.affixes.length > 8) return false;
+      !Array.isArray(item.affixes) || item.affixes.length > 8 ||
+      (item.forged !== undefined && item.forged !== true) ||
+      (item.forgeOutcome !== undefined && !['erased', 'cursed', 'reforged'].includes(item.forgeOutcome)) ||
+      (item.forged === true) !== (item.forgeOutcome !== undefined)) return false;
 
   return item.affixes.every(affix =>
     affix && typeof affix === 'object' &&
     ['sharp','sturdy','ember','vital'].includes(affix.id) &&
     typeof affix.label === 'string' && affix.label.length <= 120 &&
-    Number.isFinite(affix.value) && affix.value >= 0 && affix.value <= 10000
+    Number.isFinite(affix.value) &&
+    affix.value >= (item.forged ? -10000 : 0) && affix.value <= 10000
   );
 }
 
@@ -57,6 +66,8 @@ function parseSnapshot(raw: string): StashSnapshot | null {
         !Number.isSafeInteger(data.completed) || data.completed! < 0 ||
         !Array.isArray(data.items) || data.items.length > STASH_CAPACITY ||
         !data.items.every(validItem) ||
+        (data.forgeEmbers !== undefined && (!Number.isSafeInteger(data.forgeEmbers) ||
+          data.forgeEmbers < 0 || data.forgeEmbers > MAX_FORGE_EMBERS)) ||
         (data.unlocks !== undefined && (!Array.isArray(data.unlocks) ||
           data.unlocks.length > UNLOCK_CHOICES.length || !data.unlocks.every(isValidUnlockId) ||
           new Set(data.unlocks).size !== data.unlocks.length))) return null;
@@ -89,6 +100,8 @@ export class SecuredStash {
   private data = freshSnapshot();
   private state: StashStatus = 'ready';
   private lastStored: string | null = null;
+  /** Currency acquired during THIS run cannot be forged until a new run loads. */
+  private spendableEmbers = 0;
 
   constructor(private readonly storage: StashStorage | null = tryStorage()) {
     if (!this.storage) {
@@ -105,6 +118,7 @@ export class SecuredStash {
           return;
         }
         this.data = loaded;
+        this.spendableEmbers = loaded.forgeEmbers ?? 0;
       }
     } catch {
       this.state = 'unavailable';
@@ -116,14 +130,23 @@ export class SecuredStash {
   get completedExpeditions(): number { return this.data.completed; }
   get items(): readonly LootItem[] { return this.data.items.map(cloneItem); }
   get unlockedIds(): readonly string[] { return [...(this.data.unlocks ?? [])]; }
+  get forgeEmbers(): number { return this.data.forgeEmbers ?? 0; }
+  get spendableForgeEmbers(): number { return this.spendableEmbers; }
 
   /** A successful Warden exit secures carried AND worn gear. */
-  secureExpedition(items: readonly LootItem[], unlocks: readonly string[] = []): StashOutcome {
+  secureExpedition(
+    items: readonly LootItem[], unlocks: readonly string[] = [],
+    forgeEmbers = 0,
+  ): StashOutcome {
     if (this.state !== 'ready') return this.failure();
     if (!items.every(validItem) || new Set(items.map(item => item.id)).size !== items.length) {
       return { ok: false, saved: 0, reason: 'invalid-items' };
     }
     if (!unlocks.every(isValidUnlockId) || new Set(unlocks).size !== unlocks.length) {
+      return { ok: false, saved: 0, reason: 'invalid-items' };
+    }
+    if (!Number.isSafeInteger(forgeEmbers) || forgeEmbers < 0 ||
+        this.forgeEmbers + forgeEmbers > MAX_FORGE_EMBERS) {
       return { ok: false, saved: 0, reason: 'invalid-items' };
     }
     if (this.data.items.length + items.length > STASH_CAPACITY) {
@@ -145,9 +168,69 @@ export class SecuredStash {
       completed: this.data.completed + 1,
       items: [...this.data.items, ...secured],
       unlocks: [...new Set([...(this.data.unlocks ?? []), ...unlocks])],
+      forgeEmbers: this.forgeEmbers + forgeEmbers,
     };
     if (!this.commit(next)) return this.failure();
     return { ok: true, saved: secured.length };
+  }
+
+  /**
+   * One irreversible attempt per item across the lifetime of the equipment.
+   * 25% deletes the selected affix, 20% reverses its bonus into a penalty,
+   * 55% rerolls a legal affix. Persists the one-time marker and Ember spend
+   * atomically; all other affixes and item identity remain intact.
+   */
+  reforgeItem(id: string, affixIndex: number): boolean {
+    if (this.state !== 'ready' || this.spendableEmbers < 1 ||
+        !Number.isInteger(affixIndex)) return false;
+    const index = this.data.items.findIndex(item => item.id === id);
+    if (index < 0) return false;
+    const original = this.data.items[index];
+    if (original.rarity === 'common' || original.forged === true || affixIndex < 0 ||
+        affixIndex >= original.affixes.length) return false;
+    const nextItem = cloneItem(original);
+    const old = nextItem.affixes[affixIndex];
+    const allowed: readonly ItemAffix['id'][] = original.slot === 'weapon'
+      ? ['sharp', 'ember', 'vital']
+      : original.slot === 'armor' ? ['sturdy', 'vital', 'ember']
+        : ['vital', 'ember', 'sharp'];
+    const candidates = allowed.filter(affix =>
+      !nextItem.affixes.some((other, i) => i !== affixIndex && other.id === affix));
+    if (!candidates.length) return false;
+    const itemHash = [...id].reduce((state, char) =>
+      lootHash(state, char.charCodeAt(0)), 0xFACE);
+    const random = lootHash(itemHash, this.data.revision, affixIndex, original.itemLevel);
+    const outcome = random % 100;
+    if (outcome < FORGE_ODDS.erased) {
+      nextItem.affixes.splice(affixIndex, 1);
+      nextItem.forgeOutcome = 'erased';
+    } else if (outcome < FORGE_ODDS.erased + FORGE_ODDS.cursed) {
+      nextItem.affixes[affixIndex] = { ...old, value: -Math.abs(old.value) };
+      nextItem.forgeOutcome = 'cursed';
+    } else {
+      const affixId = candidates[lootHash(random, 0xA11CE) % candidates.length];
+      // Item level bounds the possible roll; rerolling never levels an item up.
+      const maxRoll = 4 + original.itemLevel * 2;
+      let value = 2 + (lootHash(random, 0xBEEF) % maxRoll);
+      if (affixId === old.id && value === old.value) {
+        value = 2 + ((value - 1) % maxRoll);
+      }
+      const label = affixId === 'sharp' ? 'Attack Power'
+        : affixId === 'sturdy' ? 'Armor'
+        : affixId === 'ember' ? 'Ember Potency' : 'Maximum Health';
+      nextItem.affixes[affixIndex] = { id: affixId, label, value };
+      nextItem.forgeOutcome = 'reforged';
+    }
+    nextItem.forged = true;
+    const next: StashSnapshot = {
+      ...this.data,
+      revision: this.data.revision + 1,
+      forgeEmbers: this.forgeEmbers - 1,
+      items: this.data.items.map((item, i) => i === index ? nextItem : item),
+    };
+    if (!this.commit(next)) return false;
+    this.spendableEmbers--;
+    return true;
   }
 
   /** Remove a secured item BEFORE placing it in the risky expedition bag. */
