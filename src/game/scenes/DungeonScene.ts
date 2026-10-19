@@ -16,7 +16,7 @@ import { ExplorationView } from '../dungeon/ExplorationView';
 import { OptionalObjectiveDirector, type OptionalObjectiveKind } from '../dungeon/OptionalObjectiveDirector';
 import { OptionalObjectiveUI } from '../ui/OptionalObjectiveUI';
 import { ExpeditionLoot } from '../loot/ExpeditionLoot';
-import { groupGroundLoot } from '../loot/LootPresentation';
+import { groupGroundLoot, LOOT_CLUSTER_DISTANCE } from '../loot/LootPresentation';
 import { LootUI } from '../ui/LootUI';
 import { EquipmentLoadout, EQUIPMENT_SLOTS, mitigatedHitDamage } from '../loot/EquipmentLoadout';
 import { SecuredStash } from '../loot/SecuredStash';
@@ -454,7 +454,10 @@ export class DungeonScene extends Phaser.Scene {
   private refreshGroundVisuals(): void {
     for (const visual of this.groundVisuals.values()) visual.destroy();
     this.groundVisuals.clear();
-    for (const group of groupGroundLoot(this.loot.ground)) {
+    for (const group of groupGroundLoot(
+      this.loot.ground, LOOT_CLUSTER_DISTANCE,
+      (from, to) => this.grid.isSegmentWalkable(from, to),
+    )) {
       const color = group.topRarity === 'rare' ? 0xf0c779
         : group.topRarity === 'magic' ? 0x8ebcff : 0xcfd4d1;
       const glow = this.add.circle(0, 0, group.members.length > 1 ? 20 : 14,
