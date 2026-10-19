@@ -4,6 +4,7 @@ const gameUrl = 'http://127.0.0.1:4173/ashen-depths/?seed=42';
 
 async function touchOrClick(page: Page, button: import('@playwright/test').Locator, projectName: string) {
   await expect(button).toBeVisible();
+  await button.scrollIntoViewIfNeeded();
   if (projectName === 'desktop') return button.click();
   const bounds = await button.boundingBox();
   expect(bounds).not.toBeNull();
