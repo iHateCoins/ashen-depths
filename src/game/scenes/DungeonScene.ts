@@ -466,6 +466,7 @@ export class DungeonScene extends Phaser.Scene {
       return;
     }
     this.finalized = true;
+    this.updateObjectiveStatus();
     this.optionalUi.hide();
     this.stashUi.hideForResult();
     this.lootUi.hideForResult();
