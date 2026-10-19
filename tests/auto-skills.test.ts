@@ -71,9 +71,11 @@ describe('automatic skill selection', () => {
     system.setEquipped([FROST_BLOOM, ASH_LANCE]);
     expect(system.remaining(FROST_BLOOM.id)).toBe(frostCooldown);
     expect(system.remaining(ASH_LANCE.id)).toBe(0);
-    expect(system.remaining(CINDER_BURST.id)).toBe(0);
+    expect(system.remaining(CINDER_BURST.id)).toBe(CINDER_BURST.cooldownSeconds);
     const casts = system.update({ x: 0, y: 0 }, targets, 0.016);
     expect(casts.map(cast => cast.skillId)).toEqual([ASH_LANCE.id]);
+    system.setEquipped([CINDER_BURST, ASH_LANCE]);
+    expect(system.remaining(CINDER_BURST.id)).toBe(CINDER_BURST.cooldownSeconds);
   });
 
   it('supports single-target lance and broad-area frost without manual attack input', () => {
