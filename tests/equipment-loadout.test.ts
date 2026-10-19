@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EquipmentLoadout, itemBonuses } from '../src/game/loot/EquipmentLoadout';
+import { EquipmentLoadout, itemBonuses, mitigatedHitDamage } from '../src/game/loot/EquipmentLoadout';
 import { ExpeditionLoot, type LootItem } from '../src/game/loot/ExpeditionLoot';
 import { AutoCombat } from '../src/game/combat/AutoCombat';
 import { AutoSkillSystem, CINDER_BURST } from '../src/game/combat/AutoSkillSystem';
@@ -144,6 +144,16 @@ describe('worn gear stat effects', () => {
     expect(enemies[0].hp).toBe(56);
     skills.bonusDamage = 0;
     expect(skills.remaining('cinder-burst')).toBeGreaterThan(0);
+  });
+
+  it('armor reduces wretch and brute strike damage without allowing invulnerability', () => {
+    expect(mitigatedHitDamage(8, 0)).toBe(8);
+    expect(mitigatedHitDamage(8, 3)).toBe(5);
+    expect(mitigatedHitDamage(22, 9)).toBe(13);
+    expect(mitigatedHitDamage(8, 22)).toBe(1);
+    expect(mitigatedHitDamage(8, 1000)).toBe(1);
+    expect(mitigatedHitDamage(8, -100)).toBe(8);
+    expect(mitigatedHitDamage(0, 50)).toBe(0);
   });
 
   it('health equipment preserves missing HP and cannot kill when unequipped', () => {
