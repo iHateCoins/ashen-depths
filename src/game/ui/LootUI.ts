@@ -1,4 +1,7 @@
-import type { ExpeditionLoot, GroundLoot, LootItem, ItemRarity } from '../loot/ExpeditionLoot';
+import type { ExpeditionLoot, GroundLoot, LootItem, ItemRarity, EquipmentSlot } from '../loot/ExpeditionLoot';
+import {
+  EQUIPMENT_SLOTS, EquipmentLoadout, itemBonuses, type EquipmentStats,
+} from '../loot/EquipmentLoadout';
 
 const RARITY_COLOR: Readonly<Record<ItemRarity, string>> = {
   common: '#ced3d4',
@@ -15,10 +18,26 @@ function createElement<K extends keyof HTMLElementTagNameMap>(
   return element;
 }
 
+function statLines(stats: EquipmentStats): string {
+  return `Attack +${stats.attack} · Spell +${stats.spell} · Armor ${stats.armor} · Health +${stats.health}`;
+}
+
+function previewDifference(current: EquipmentStats, next: EquipmentStats): string {
+  const parts: string[] = [];
+  for (const [key, label] of [
+    ['attack', 'Attack'], ['spell', 'Spell'], ['armor', 'Armor'], ['health', 'Health'],
+  ] as const) {
+    const diff = next[key] - current[key];
+    if (diff) parts.push(`${diff > 0 ? '+' : ''}${diff} ${label}`);
+  }
+  return parts.length ? `If equipped: ${parts.join(' · ')}` : 'If equipped: no change';
+}
+
 /**
- * Native DOM for reliable iPhone hit testing, matching result/objective UI.
- * Pickup is always deliberate, inventory is run-scoped and inspectable, and
- * no item can be equipped or secured permanently in this milestone.
+ * Native iPhone-safe inventory. The bag and three worn equipment slots have
+ * separate ownership; both are unsecured until the later extraction system.
+ * A deliberate EQUIP tap replaces existing equipment atomically, and UNEQUIP
+ * respects the bag's 24-slot capacity.
  */
 export class LootUI {
   private readonly button: HTMLButtonElement;
@@ -31,16 +50,21 @@ export class LootUI {
   private readonly bagOverlay: HTMLElement;
   private readonly bagList: HTMLElement;
   private readonly bagCount: HTMLElement;
+  private readonly equipmentList: HTMLElement;
+  private readonly statsLine: HTMLElement;
   private highlightedDrop: GroundLoot | null = null;
   private lastSignature = '';
   private open = false;
 
   constructor(
     private readonly loot: ExpeditionLoot,
+    private readonly equipment: EquipmentLoadout,
     private readonly onPickup: (id: string) => void,
     private readonly onDiscard: (id: string) => void,
+    private readonly onEquip: (id: string) => void,
+    private readonly onUnequip: (slot: EquipmentSlot) => void,
   ) {
-    const bagButton = createElement('button', 'ashen-bag-toggle', 'BAG 0 / 24');
+    const bagButton = createElement('button', 'ashen-bag-toggle', `BAG 0 / ${loot.capacity}`);
     bagButton.id = 'ashen-bag-toggle';
     bagButton.type = 'button';
     bagButton.addEventListener('click', event => {
@@ -50,6 +74,7 @@ export class LootUI {
     });
     document.body.append(bagButton);
     this.button = bagButton;
+
     const finish = createElement('button', 'ashen-finish-run', 'FINISH EXPEDITION');
     finish.id = 'ashen-finish-run';
     finish.type = 'button';
@@ -88,32 +113,36 @@ export class LootUI {
 
     const panel = createElement('div', 'ashen-bag-panel');
     const header = createElement('div', 'ashen-bag-header');
-    const heading = createElement('h2', '', 'Expedition Bag');
+    const heading = createElement('h2', '', 'Expedition Bag & Gear');
     const close = createElement('button', 'ashen-bag-close', 'CLOSE');
     close.type = 'button';
     close.addEventListener('click', () => this.closeBag());
     header.append(heading, close);
 
     const warning = createElement('p', 'ashen-bag-warning',
-      'UNSECURED LOOT — gear in this bag is lost when the run ends. Extraction and equipment arrive in later updates.');
+      'UNSECURED — both carried and equipped items are lost when this run ends. Extraction and permanent stash come later.');
+    const equipmentHeading = createElement('h3', 'ashen-gear-heading', 'Equipped Gear');
+    const equipmentList = createElement('div', 'ashen-equipment-list');
+    const stats = createElement('p', 'ashen-equipment-stats');
+    stats.id = 'ashen-equipment-stats';
+    const bagHeading = createElement('h3', 'ashen-gear-heading', 'Carried Equipment');
     const count = createElement('p', 'ashen-bag-count');
     const list = createElement('div', 'ashen-bag-list');
-    panel.append(header, warning, count, list);
+    panel.append(header, warning, equipmentHeading, equipmentList, stats, bagHeading, count, list);
     overlay.append(panel);
     document.body.append(overlay);
     this.bagOverlay = overlay;
     this.bagCount = count;
     this.bagList = list;
+    this.equipmentList = equipmentList;
+    this.statsLine = stats;
 
     this.refresh(null);
   }
 
   get isOpen(): boolean { return this.open; }
 
-  /** Show a deliberate end-of-run action after the Warden has fallen.
-   * The player can inspect and pick up its loot before ending the run.
-   * This is NOT extraction: all items remain unsecured in PR01.
-   */
+  /** The Warden drop remains accessible until the player finishes the run. */
   enableFinish(onFinish: () => void): void {
     if (this.victoryOffered) return;
     this.victoryOffered = true;
@@ -143,16 +172,46 @@ export class LootUI {
   }
 
   private renderBag(): void {
-    this.bagCount.textContent = `${this.loot.bag.length} / ${this.loot.capacity} slots used`;
+    this.bagCount.textContent = `${this.loot.bag.length} / ${this.loot.capacity} bag slots used`;
+    this.statsLine.textContent = `Worn bonuses: ${statLines(this.equipment.stats)}`;
+
+    this.equipmentList.replaceChildren();
+    for (const slot of EQUIPMENT_SLOTS) {
+      const item = this.equipment.get(slot);
+      const card = createElement('article', 'ashen-equipped-slot');
+      card.dataset.slot = slot;
+      const description = createElement('div', 'ashen-bag-item-details');
+      const heading = createElement('strong', '', slot.toUpperCase());
+      description.append(heading);
+      if (item) {
+        const name = createElement('span', '', item.name);
+        name.style.color = RARITY_COLOR[item.rarity];
+        description.append(name, createElement('span', '', statLines(itemBonuses(item))));
+        const unequip = createElement('button', 'ashen-bag-unequip', 'UNEQUIP');
+        unequip.type = 'button';
+        unequip.setAttribute('aria-label', `Unequip ${slot}`);
+        unequip.disabled = this.loot.bagFull;
+        if (unequip.disabled) unequip.title = 'Bag is full';
+        unequip.addEventListener('click', () => {
+          this.onUnequip(slot);
+          this.lastSignature = '';
+          this.renderBag();
+        });
+        card.append(description, unequip);
+      } else {
+        description.append(createElement('span', '', 'Empty slot'));
+        card.append(description);
+      }
+      this.equipmentList.append(card);
+    }
+
     this.bagList.replaceChildren();
     if (!this.loot.bag.length) {
       this.bagList.append(createElement('p', 'ashen-bag-empty',
-        'Your bag is empty. Defeat enemies and approach dropped items to collect them.'));
+        'Your bag is empty. Defeat enemies, collect gear, and equip it here.'));
       return;
     }
-    for (const item of this.loot.bag) {
-      this.bagList.append(this.renderItem(item));
-    }
+    for (const item of this.loot.bag) this.bagList.append(this.renderItem(item));
   }
 
   private renderItem(item: LootItem): HTMLElement {
@@ -160,14 +219,30 @@ export class LootUI {
     const details = createElement('div', 'ashen-bag-item-details');
     const name = createElement('strong', '', item.name);
     name.style.color = RARITY_COLOR[item.rarity];
-    const category = createElement('span', '', `${item.rarity.toUpperCase()} · ${item.slot.toUpperCase()} · Level ${item.itemLevel}`);
+    const category = createElement('span', '',
+      `${item.rarity.toUpperCase()} · ${item.slot.toUpperCase()} · Level ${item.itemLevel}`);
     details.append(name, category);
+    const bonuses = itemBonuses(item);
+    details.append(createElement('span', '', statLines(bonuses)));
     if (item.affixes.length) {
-      const affixes = createElement('span', '', item.affixes.map(
+      details.append(createElement('span', '', item.affixes.map(
         modifier => `+${modifier.value} ${modifier.label}`,
-      ).join(' · '));
-      details.append(affixes);
+      ).join(' · ')));
     }
+    const previous = this.equipment.get(item.slot);
+    if (previous) details.append(createElement('span', '', `Replacing: ${previous.name}`));
+    details.append(createElement('span', 'ashen-bag-comparison',
+      previewDifference(this.equipment.stats, this.equipment.previewEquip(item))));
+
+    const buttons = createElement('div', 'ashen-bag-item-actions');
+    const equip = createElement('button', 'ashen-bag-equip', 'EQUIP');
+    equip.type = 'button';
+    equip.setAttribute('aria-label', `Equip ${item.name}`);
+    equip.addEventListener('click', () => {
+      this.onEquip(item.id);
+      this.lastSignature = '';
+      this.renderBag();
+    });
     const discard = createElement('button', 'ashen-bag-discard', 'DROP');
     discard.type = 'button';
     discard.setAttribute('aria-label', `Drop ${item.name}`);
@@ -176,23 +251,29 @@ export class LootUI {
       this.lastSignature = '';
       this.renderBag();
     });
-    card.append(details, discard);
+    buttons.append(equip, discard);
+    card.append(details, buttons);
     return card;
   }
 
-  /** Only changes visible DOM when inventory or nearest loot changes. */
+  /** Only changes visible DOM when inventory, loadout or nearest loot changes. */
   refresh(nearest: GroundLoot | null): void {
     this.highlightedDrop = nearest;
     const signature = [
       this.loot.bag.map(item => item.id).join(','),
+      EQUIPMENT_SLOTS.map(slot => this.equipment.get(slot)?.id ?? '-').join(','),
       nearest?.id ?? 'none',
       this.loot.bagFull ? 'full' : 'space',
     ].join('|');
     if (this.lastSignature === signature) return;
     this.lastSignature = signature;
     this.button.textContent = `BAG ${this.loot.bag.length} / ${this.loot.capacity}`;
-
-    if (!nearest || this.open) {
+    if (this.open) {
+      this.nearbyPanel.hidden = true;
+      this.renderBag();
+      return;
+    }
+    if (!nearest) {
       this.nearbyPanel.hidden = true;
       return;
     }
