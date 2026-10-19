@@ -113,7 +113,7 @@ export class StashUI {
     this.instructions.textContent = this.canWithdraw
       ? 'Preparing at the entrance: WITHDRAW moves an item from safety into this expedition. It can be lost if you die or abandon the run.'
       : 'Stash view only. Return to camp on a new expedition to withdraw gear. Dungeon loot can only be deposited by finishing successfully.';
-    this.count.textContent = `${this.stash.count} secured items · ${this.stash.completedExpeditions} successful expeditions`;
+    this.count.textContent = `${this.stash.count} secured items · ${this.stash.completedExpeditions} successful expedition${this.stash.completedExpeditions === 1 ? '' : 's'}`;
     this.items.replaceChildren();
     const items = this.stash.items;
     if (!items.length) {
