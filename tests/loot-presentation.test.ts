@@ -62,7 +62,7 @@ describe('clutter-free ground loot rendering', () => {
     expect(input.some(m => m.position.y === groups[0].position.y)).toBe(true);
   });
 
-  it('updates a group's item count when each specific item is collected', () => {
+  it('updates grouped item counts when each specific item is collected', () => {
     const loot = new ExpeditionLoot(42);
     const near = { x: 120, y: 120 };
     const first = loot.dropForEnemy(1, 'brute', false, { x: 130, y: 120 })!;
