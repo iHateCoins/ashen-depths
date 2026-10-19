@@ -60,10 +60,20 @@ export function groupGroundLoot(
   return [...grouped.values()].map(members => ({
     id: members.map(member => member.id).join('|'),
     members,
-    position: {
-      x: members.reduce((sum, member) => sum + member.position.x, 0) / members.length,
-      y: members.reduce((sum, member) => sum + member.position.y, 0) / members.length,
-    },
+    // Anchor to a real dropped item rather than the arithmetic center;
+    // that center could be inside a solid wall or outside the floor.
+    position: (() => {
+      const center = {
+        x: members.reduce((sum, member) => sum + member.position.x, 0) / members.length,
+        y: members.reduce((sum, member) => sum + member.position.y, 0) / members.length,
+      };
+      const closest = [...members].sort((a, b) =>
+        Math.hypot(a.position.x - center.x, a.position.y - center.y) -
+        Math.hypot(b.position.x - center.x, b.position.y - center.y) ||
+        a.id.localeCompare(b.id)
+      )[0];
+      return { ...closest.position };
+    })(),
     topRarity: members.reduce<ItemRarity>((best, member) =>
       RARITY_ORDER[member.item.rarity] > RARITY_ORDER[best] ? member.item.rarity : best,
     members[0].item.rarity),
