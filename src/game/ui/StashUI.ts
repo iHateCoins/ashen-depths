@@ -89,10 +89,9 @@ export class StashUI {
   refresh(canWithdraw: boolean, bagFull: boolean): void {
     this.canWithdraw = canWithdraw && this.stash.status === 'ready';
     this.isBagFull = bagFull;
-    const ids = this.stash.items.map(item => item.id).join(',');
     const signature = [
       this.stash.status, this.stash.count, this.stash.completedExpeditions,
-      ids, canWithdraw, bagFull,
+      canWithdraw, bagFull,
     ].join('|');
     if (this.lastSignature === signature) return;
     this.lastSignature = signature;
