@@ -2,6 +2,16 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const gameUrl = 'http://127.0.0.1:4173/ashen-depths/?seed=42';
 
+async function unlockSkillCatalog(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    localStorage.setItem('ashen-depths-stash-v1', JSON.stringify({
+      schema: 1, revision: 0, completed: 0, items: [],
+      unlocks: ['skill:frost-bloom', 'skill:ash-lance',
+        'support:focused-power', 'support:expansive-blast', 'support:swift-casting'],
+    }));
+  });
+}
+
 async function tap(page: Page, control: Locator): Promise<void> {
   await expect(control).toBeVisible({ timeout: 12_000 });
   if (test.info().project.name === 'desktop') {
@@ -39,6 +49,7 @@ test('skill supports change effective stats and cannot duplicate across skills',
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.setViewportSize({ width: 390, height: 844 });
+  await unlockSkillCatalog(page);
   await page.goto(gameUrl);
   await expect(page.locator('canvas')).toBeVisible({ timeout: 20_000 });
   await tap(page, page.locator('#ashen-skills-toggle'));
@@ -68,6 +79,7 @@ test('skill supports change effective stats and cannot duplicate across skills',
 });
 
 test('support choices lock after departure and reset without touching stash data', async ({ page }) => {
+  await unlockSkillCatalog(page);
   await page.goto(gameUrl);
   await expect(page.locator('canvas')).toBeVisible({ timeout: 20_000 });
   await tap(page, page.locator('#ashen-skills-toggle'));
