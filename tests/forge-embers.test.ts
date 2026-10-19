@@ -6,6 +6,8 @@ import {
   SecuredStash, STASH_STORAGE_KEY, type StashStorage,
 } from '../src/game/loot/SecuredStash';
 import type { LootItem } from '../src/game/loot/ExpeditionLoot';
+import { itemBonuses } from '../src/game/loot/EquipmentLoadout';
+import { AutoCombat } from '../src/game/combat/AutoCombat';
 
 class MemoryStorage implements StashStorage {
   readonly values = new Map<string, string>();
@@ -168,6 +170,24 @@ describe('repeatable Forge Ember discovery and gear reforging', () => {
       expect(new SecuredStash(store).reforgeItem(original.id, 0)).toBe(false);
     }
     expect([...seen].sort()).toEqual(['cursed', 'erased', 'reforged']);
+  });
+
+  it('cursed affixes reduce actual item stats without turning attack damage into healing', () => {
+    const normal = item('bonus');
+    const cursed: LootItem = {
+      ...normal, forged: true, forgeOutcome: 'cursed',
+      affixes: [
+        { ...normal.affixes[0], value: -7 },
+        normal.affixes[1],
+      ],
+    };
+    expect(itemBonuses(normal).attack - itemBonuses(cursed).attack).toBe(14);
+    const attack = new AutoCombat();
+    attack.bonusDamage = -100;
+    const victim = [{ id: 1, position: { x: 20, y: 0 }, hp: 100, maxHp: 100 }];
+    const hits = attack.update({ x: 0, y: 0 }, victim, 0.016);
+    expect(hits[0].damage).toBe(1);
+    expect(victim[0].hp).toBe(99);
   });
 
   it('once-forged equipment remains unusable at the forge after withdrawal and re-extraction', () => {
