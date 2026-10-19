@@ -613,7 +613,7 @@ export class DungeonScene extends Phaser.Scene {
     this.combat.bonusDamage = this.optionalObjectives.attackBonus + stats.attack;
     this.skills.bonusDamage = stats.spell;
     this.skills.bonusAttackDamage = stats.attack;
-    this.health.setMaxHp(100 + stats.health);
+    this.health.setMaxHp(Math.max(1, 100 + stats.health));
   }
 
   private equipBagItem(id: string): void {
