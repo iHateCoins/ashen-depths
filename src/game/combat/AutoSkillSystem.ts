@@ -12,8 +12,8 @@ export interface AutoSkillDefinition {
 
 export const SKILL_SLOT_LIMIT = 2;
 
-export const FROST_NOVA: AutoSkillDefinition = {
-  id: 'frost-nova', name: 'Frost Nova', range: 170, radius: 140,
+export const FROST_BLOOM: AutoSkillDefinition = {
+  id: 'frost-bloom', name: 'Frost Bloom', range: 170, radius: 140,
   damage: 20, cooldownSeconds: 6,
 };
 
@@ -22,7 +22,7 @@ export const ASH_LANCE: AutoSkillDefinition = {
   damage: 65, cooldownSeconds: 3.5,
 };
 
-export const ACTIVE_SKILLS: readonly AutoSkillDefinition[] = [CINDER_BURST, FROST_NOVA, ASH_LANCE];
+export const ACTIVE_SKILLS: readonly AutoSkillDefinition[] = [CINDER_BURST, FROST_BLOOM, ASH_LANCE];
 
 export interface SkillHit {
   enemyId: number;
