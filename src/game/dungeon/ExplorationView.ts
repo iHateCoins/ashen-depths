@@ -3,6 +3,7 @@ import type { Point } from '../movement/MovementController';
 import type { DungeonLayout } from './DungeonGenerator';
 import type { ExplorationTracker } from './ExplorationTracker';
 import type { OptionalObjectiveDirector } from './OptionalObjectiveDirector';
+import type { ExtractionDirector } from './ExtractionDirector';
 
 /** Presentation-only layer: the tracker owns all gameplay/exploration state. */
 export class ExplorationView {
@@ -21,6 +22,7 @@ export class ExplorationView {
     private readonly exploration: ExplorationTracker,
     player: Point,
     private readonly objectives?: OptionalObjectiveDirector,
+    private readonly extraction?: ExtractionDirector,
   ) {
     this.lastPlayer = { ...player };
     // Overlay world geometry and monsters, never the player once standing on a
@@ -87,7 +89,8 @@ export class ExplorationView {
       if (!this.exploration.hasDiscovered(room.id)) continue;
       const sideObjective = this.objectives?.objectives.find(item => item.roomId === room.id);
       const claimed = sideObjective ? this.objectives?.hasClaimed(sideObjective.id) : false;
-      const color = claimed ? 0x648f86 :
+      const exit = this.extraction?.sites.find(site => site.roomId === room.id);
+      const color = exit ? 0x82e4e6 : claimed ? 0x648f86 :
         sideObjective?.id === 'shrine' ? 0x9fe0ca :
         room.role === 'cache' ? 0xf0c676 :
         room.role === 'depth' ? 0xe0a3b6 :
@@ -95,7 +98,7 @@ export class ExplorationView {
       this.map.fillStyle(color).fillCircle(
         left + (room.center.x + 0.5) * pixel,
         top + (room.center.y + 0.5) * pixel,
-        room.role === 'chamber' && !sideObjective ? 2 : 3,
+        exit ? 4 : room.role === 'chamber' && !sideObjective ? 2 : 3,
       );
     }
     const x = Math.max(left + 1, Math.min(left + mapWidth - 1, left + player.x / this.layout.cellSize * pixel));
