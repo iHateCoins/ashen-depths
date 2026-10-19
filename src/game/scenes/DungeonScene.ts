@@ -5,7 +5,7 @@ import { findPath } from '../navigation/Pathfinder';
 import { DirectionalAnimator } from '../rendering/DirectionalAnimator';
 import { createDebugOptions, toggleDebug, type DebugOptions } from '../debug/DebugOptions';
 import { AutoCombat } from '../combat/AutoCombat';
-import { AutoSkillSystem, CINDER_BURST } from '../combat/AutoSkillSystem';
+import { AutoSkillSystem } from '../combat/AutoSkillSystem';
 import { createEnemyAgent, ENEMY_ARCHETYPES, updateEnemyAgents, type EnemyAgent } from '../combat/EnemyAI';
 import { PlayerHealth } from '../combat/PlayerHealth';
 import { RoomEncounterDirector } from '../combat/RoomEncounterDirector';
@@ -24,6 +24,7 @@ import { StashUI } from '../ui/StashUI';
 import { ExtractionDirector } from '../dungeon/ExtractionDirector';
 import { ExtractionUI } from '../ui/ExtractionUI';
 import { InteractionDock } from '../ui/InteractionDock';
+import { SkillLoadoutUI } from '../ui/SkillLoadoutUI';
 import type { EquipmentSlot } from '../loot/ExpeditionLoot';
 
 const WORLD_WIDTH = 2304;
@@ -72,6 +73,7 @@ export class DungeonScene extends Phaser.Scene {
   private extraction!: ExtractionDirector;
   private extractionUi!: ExtractionUI;
   private interactionDock!: InteractionDock;
+  private skillUi!: SkillLoadoutUI;
   private extractionOverlay!: ResultOverlay;
   private lootUi!: LootUI;
   private groundVisuals = new Map<string, Phaser.GameObjects.Container>();
@@ -132,7 +134,7 @@ export class DungeonScene extends Phaser.Scene {
     this.cameras.main.setZoom(this.zoom);
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen) return;
+      if (this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen) return;
       if (this.extraction.phase === 'channeling') this.cancelExtraction();
       if (pointer.event instanceof MouseEvent && pointer.event.button !== 0) return;
       const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
@@ -164,7 +166,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M04 / PR07', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M05 / PR01', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(198).setVisible(false);
     this.dungeonSeedLabel = this.add.text(14, 0, `DUNGEON SEED: ${this.dungeon.seed}`, {
@@ -191,6 +193,9 @@ export class DungeonScene extends Phaser.Scene {
       slot => this.unequipGear(slot),
     );
     this.stashUi = new StashUI(this.securedStash, this.loot, id => this.withdrawFromStash(id));
+    this.skillUi = new SkillLoadoutUI(this.skills,
+      () => !this.health.defeated && !this.finalized && !this.lootUi.isOpen && !this.stashUi.isOpen,
+      () => this.cancelExtraction());
     this.extractionUi = new ExtractionUI(id => this.startExtraction(id), () => this.cancelExtraction());
     this.interactionDock = new InteractionDock(() => this.cancelExtraction());
     this.interactionDock.refresh(false);
@@ -205,6 +210,7 @@ export class DungeonScene extends Phaser.Scene {
     const stashUi = this.stashUi;
     const extractionUi = this.extractionUi;
     const interactionDock = this.interactionDock;
+    const skillUi = this.skillUi;
     const extractionOverlay = this.extractionOverlay;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       defeatOverlay.destroy();
@@ -215,6 +221,7 @@ export class DungeonScene extends Phaser.Scene {
       stashUi.destroy();
       extractionUi.destroy();
       interactionDock.destroy();
+      skillUi.destroy();
       extractionOverlay.destroy();
     });
     this.debugButton = this.add.text(0, 8, 'DEBUG: OFF', {fontFamily:'Arial, sans-serif',fontSize:'14px',color:'#e3c99c',backgroundColor:'#243136',padding:{x:10,y:8}}).setScrollFactor(0).setDepth(110).setInteractive();
@@ -367,7 +374,7 @@ export class DungeonScene extends Phaser.Scene {
       .setWordWrapWidth(hudWidth);
     this.status.setWordWrapWidth(hudWidth).setVisible(this.debug.visible);
     this.debugButton?.setX(Math.max(8, width - 146)).setVisible(width >= 900);
-    this.skillStatusLabel?.setY(Math.max(152, height - (width < 600 ? 150 : 46)));
+    this.skillStatusLabel?.setY(Math.max(152, height - (width < 600 ? 222 : 109)));
     this.dungeonSeedLabel?.setY(Math.max(192, height - 77))
       .setVisible(width >= 600 || this.debug.visible);
   }
@@ -563,6 +570,7 @@ export class DungeonScene extends Phaser.Scene {
     this.extractionUi.hide();
     this.interactionDock.hideForResult();
     this.stashUi.hideForResult();
+    this.skillUi.hideForResult();
     this.lootUi.hideForResult();
     this.movement.stop();
     this.waypoints = [];
@@ -711,8 +719,8 @@ export class DungeonScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     if (this.extraction.phase === 'channeling' &&
-        (this.lootUi.isOpen || this.stashUi.isOpen)) this.cancelExtraction();
-    if(this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen) return;
+        (this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen)) this.cancelExtraction();
+    if(this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen) return;
     const hpBeforeFrame = this.health.hp;
     const oldX = this.movement.position.x;
     const oldY = this.movement.position.y;
@@ -749,20 +757,26 @@ export class DungeonScene extends Phaser.Scene {
       this.showDamage(enemy.position, attack.damage, '#fff0b6');
     }
     for (const cast of this.skills.update(this.movement.position, this.enemies, delta / 1000, canSee)) {
-      const burst = this.add.circle(cast.center.x, cast.center.y, cast.radius, 0xe56c32, 0.25)
-        .setStrokeStyle(4, 0xffb16e, 0.9).setDepth(12);
+      const color = cast.skillId === 'frost-bloom' ? 0x74cce2
+        : cast.skillId === 'ash-lance' ? 0xb28ce8 : 0xe56c32;
+      const rim = cast.skillId === 'frost-bloom' ? 0xb9f4ff
+        : cast.skillId === 'ash-lance' ? 0xe2ccff : 0xffb16e;
+      const burst = this.add.circle(cast.center.x, cast.center.y, cast.radius, color, 0.25)
+        .setStrokeStyle(4, rim, 0.9).setDepth(12);
       this.tweens.add({targets:burst,scale:1.2,alpha:0,duration:460,onComplete:()=>burst.destroy()});
       for (const hit of cast.hits) {
         const enemy = this.enemies.find(e => e.id === hit.enemyId);
-        if (enemy) this.showDamage(enemy.position, hit.damage, '#ff9a5c');
+        if (enemy) this.showDamage(enemy.position, hit.damage,
+          cast.skillId === 'frost-bloom' ? '#a8ebfb' : cast.skillId === 'ash-lance' ? '#e0baff' : '#ff9a5c');
       }
     }
     // Both attacks and skills change health; synchronize enemy visuals once per frame.
     this.syncEnemyHealth();
-    const remaining = this.skills.remaining(CINDER_BURST.id);
-    this.skillStatusLabel.setText(remaining <= 0.01
-      ? 'CINDER BURST: READY · automatic'
-      : `CINDER BURST: ${remaining.toFixed(1)}s · automatic`);
+    this.skillStatusLabel.setText(this.skills.equipped.length
+      ? this.skills.equipped.map(skill => {
+        const remaining = this.skills.remaining(skill.id);
+        return `${skill.name.toUpperCase()}: ${remaining <= 0.01 ? 'READY' : `${remaining.toFixed(1)}s`}`;
+      }).join('\n') : 'NO ACTIVE SKILLS');
     for (const strike of updateEnemyAgents(this.enemies,this.movement.position,this.grid,delta/1000)) {
       const flash = this.add.circle(strike.center.x,strike.center.y,strike.radius,
         strike.hit ? 0xf26b57 : 0x89baa3,0.28).setDepth(12);
@@ -810,6 +824,7 @@ export class DungeonScene extends Phaser.Scene {
       this.movement.stop();this.waypoints=[];this.marker.setVisible(false);
       this.lootUi.hideForResult();
       this.stashUi.hideForResult();
+      this.skillUi.hideForResult();
       this.extractionUi.hide();
       this.interactionDock.hideForResult();
       this.defeatOverlay.show();
