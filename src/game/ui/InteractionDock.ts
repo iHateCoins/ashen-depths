@@ -1,34 +1,35 @@
-export type InteractionTab = 'loot' | 'extract';
+export type InteractionTab = 'loot' | 'objective' | 'extract';
+
+type ContextVisibility = Record<InteractionTab, boolean>;
+const ORDER: readonly InteractionTab[] = ['loot', 'objective', 'extract'];
 
 /**
- * A single on-screen surface for mutually competing contextual actions.
+ * One fixed interaction surface for ALL contextual world panels. Loot,
+ * shrine/cache and extraction controls retain their existing DOM IDs and
+ * independent validation; only their layout and selection are coordinated.
  *
- * LootUI and ExtractionUI keep owning their own markup and action handlers.
- * The dock only coordinates presentation, so proximity, bag capacity, channel
- * interruption and save transactions are still validated by the game scene.
- *
- * When a waystone and loot are both nearby, the player gets two large tabs
- * rather than overlapping independently positioned panels. During an active
- * escape channel, the extraction tab stays selected so CANCEL remains visible;
- * choosing loot deliberately cancels the channel.
+ * A single nearby action appears directly, without tabs. Two or three nearby
+ * actions get clearly named touch targets and only the selected panel renders.
+ * Selecting any other action during a waystone channel cancels the channel
+ * before that action can be used.
  */
 export class InteractionDock {
   private readonly root: HTMLElement;
   private readonly tabs: HTMLElement;
-  private readonly lootButton: HTMLButtonElement;
-  private readonly extractButton: HTMLButtonElement;
-  private readonly lootPanel: HTMLElement;
-  private readonly extractionPanel: HTMLElement;
+  private readonly panels: Record<InteractionTab, HTMLElement>;
+  private readonly buttons: Record<InteractionTab, HTMLButtonElement>;
   private active: InteractionTab = 'loot';
-  private wasBoth = false;
+  private wasMultiple = false;
   private channeling = false;
 
   constructor(onCancelExtraction: () => void) {
-    const lootPanel = document.getElementById('ashen-loot-nearby');
-    const extractionPanel = document.getElementById('ashen-extraction-panel');
-    if (!lootPanel || !extractionPanel) {
-      throw new Error('Loot and extraction panels must exist before the interaction dock');
+    const loot = document.getElementById('ashen-loot-nearby');
+    const objective = document.getElementById('ashen-optional-objective');
+    const extract = document.getElementById('ashen-extraction-panel');
+    if (!loot || !objective || !extract) {
+      throw new Error('Nearby action panels must exist before the interaction dock');
     }
+    this.panels = { loot, objective, extract };
 
     const root = document.createElement('aside');
     root.id = 'ashen-interaction-dock';
@@ -41,77 +42,80 @@ export class InteractionDock {
     tabs.setAttribute('aria-label', 'Choose nearby action');
     tabs.hidden = true;
 
-    const lootButton = document.createElement('button');
-    lootButton.type = 'button';
-    lootButton.id = 'ashen-interaction-loot';
-    lootButton.textContent = 'LOOT';
-    lootButton.setAttribute('aria-label', 'Show nearby loot');
-    lootButton.addEventListener('click', event => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (this.channeling) onCancelExtraction();
-      this.active = 'loot';
-      this.render();
-    });
+    const labels: Record<InteractionTab, string> = {
+      loot: 'LOOT', objective: 'OBJECTIVE', extract: 'EXTRACT',
+    };
+    const ariaLabels: Record<InteractionTab, string> = {
+      loot: 'Show nearby loot',
+      objective: 'Show nearby shrine or cache',
+      extract: 'Show extraction waystone',
+    };
+    const buttons = {} as Record<InteractionTab, HTMLButtonElement>;
+    for (const name of ORDER) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.id = `ashen-interaction-${name}`;
+      button.textContent = labels[name];
+      button.setAttribute('aria-label', ariaLabels[name]);
+      button.hidden = true;
+      button.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (this.channeling && name !== 'extract') onCancelExtraction();
+        this.active = name;
+        this.render();
+      });
+      buttons[name] = button;
+      tabs.append(button);
+    }
 
-    const extractButton = document.createElement('button');
-    extractButton.type = 'button';
-    extractButton.id = 'ashen-interaction-extract';
-    extractButton.textContent = 'EXTRACT';
-    extractButton.setAttribute('aria-label', 'Show extraction waystone');
-    extractButton.addEventListener('click', event => {
-      event.preventDefault();
-      event.stopPropagation();
-      this.active = 'extract';
-      this.render();
-    });
-
-    tabs.append(lootButton, extractButton);
-    root.append(tabs, lootPanel, extractionPanel);
+    root.append(tabs, loot, objective, extract);
     document.body.append(root);
     this.root = root;
     this.tabs = tabs;
-    this.lootButton = lootButton;
-    this.extractButton = extractButton;
-    this.lootPanel = lootPanel;
-    this.extractionPanel = extractionPanel;
+    this.buttons = buttons;
     this.render();
   }
 
   get selected(): InteractionTab { return this.active; }
 
-  /** Called after both proximity UIs update on the current scene frame. */
+  /** Called after all three proximity UIs update on the current frame. */
   refresh(channeling: boolean): void {
-    const lootAvailable = !this.lootPanel.hidden;
-    const extractionAvailable = !this.extractionPanel.hidden;
-    const both = lootAvailable && extractionAvailable;
+    const available = {} as ContextVisibility;
+    for (const name of ORDER) available[name] = !this.panels[name].hidden;
+    const count = ORDER.filter(name => available[name]).length;
     this.channeling = channeling;
 
-    if (channeling && extractionAvailable) this.active = 'extract';
-    else if (!both) this.active = lootAvailable ? 'loot' : 'extract';
-    else if (!this.wasBoth) this.active = 'loot';
+    if (channeling && available.extract) this.active = 'extract';
+    else if (!available[this.active] || (count > 1 && !this.wasMultiple)) {
+      // Loot is most time-sensitive (and can be beside an active waystone);
+      // then optional rewards, then the exit, when no channel is active.
+      this.active = ORDER.find(name => available[name]) ?? 'loot';
+    }
 
-    this.root.hidden = !lootAvailable && !extractionAvailable;
-    this.tabs.hidden = !both;
-    this.wasBoth = both;
+    this.root.hidden = count === 0;
+    this.tabs.hidden = count <= 1;
+    for (const name of ORDER) this.buttons[name].hidden = !available[name];
+    this.wasMultiple = count > 1;
     this.render();
   }
 
-  /** A terminal victory, escape or defeat hides all contextual controls. */
+  /** Terminal victory, early escape and defeat hide the complete dock. */
   hideForResult(): void {
     this.root.hidden = true;
     this.tabs.hidden = true;
     this.channeling = false;
-    this.wasBoth = false;
+    this.wasMultiple = false;
   }
 
   private render(): void {
     this.root.dataset.active = this.active;
-    this.lootButton.setAttribute('aria-pressed', String(this.active === 'loot'));
-    this.extractButton.setAttribute('aria-pressed', String(this.active === 'extract'));
+    for (const name of ORDER) {
+      this.buttons[name].setAttribute('aria-pressed', String(this.active === name));
+    }
   }
 
-  /** Child controls are disposed of by their original UI owners. */
+  /** The owner UIs destroy their own moved DOM panels on scene shutdown. */
   destroy(): void {
     this.root.remove();
   }
