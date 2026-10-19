@@ -133,6 +133,11 @@ test('failed stash save leaves Finish action usable and does not fake victory', 
   await expect.poll(() => page.evaluate(() =>
     document.documentElement.dataset.ashenEncounter
   )).toBe('complete');
+  await expect(page.locator('#ashen-loot-nearby')).toContainText('RARE');
+  await tap(page, page.locator('#ashen-loot-nearby').getByRole('button', { name: 'PICK UP' }));
+  await expect.poll(() => page.evaluate(() =>
+    document.documentElement.dataset.ashenBagCount
+  )).toBe('1');
   // Simulate a quota/privacy rejection inside the same browser session.
   await page.evaluate(() => {
     const prototype = Storage.prototype as Storage & { __priorSetItem?: typeof Storage.prototype.setItem };
@@ -145,6 +150,7 @@ test('failed stash save leaves Finish action usable and does not fake victory', 
   await expect(page.locator('#ashen-victory-overlay')).toBeHidden();
   await expect(finish).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('ashen-depths-stash-v1'))).toBeNull();
+  expect(await page.evaluate(() => document.documentElement.dataset.ashenBagCount)).toBe('1');
 
   await page.evaluate(() => {
     const prototype = Storage.prototype as Storage & { __priorSetItem?: typeof Storage.prototype.setItem };
