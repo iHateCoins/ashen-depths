@@ -590,3 +590,57 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
   pointer-events:auto;
 }
 .ashen-interaction-dock > .ashen-finish-warning[hidden] {display:none;}
+
+/* M05 / PR01: independent two-slot automatic skill loadout. */
+.ashen-skills-toggle {
+  position:fixed;left:calc(14px + env(safe-area-inset-left));
+  bottom:calc(35px + env(safe-area-inset-bottom));
+  z-index:1190;
+  min-height:42px;border:1px solid #a6a0d2;border-radius:7px;
+  padding:9px 14px;background:#303150;color:#eee8ff;
+  font:600 14px Arial,sans-serif;cursor:pointer;touch-action:manipulation;
+}
+.ashen-skills-toggle[hidden]{display:none;}
+.ashen-skills-overlay {
+  position:fixed;inset:0;z-index:1900;display:flex;
+  justify-content:center;align-items:center;
+  padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right))
+    max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));
+  box-sizing:border-box;background:#081018ee;color:#f0e9df;touch-action:auto;
+}
+.ashen-skills-overlay[hidden]{display:none;}
+.ashen-skills-panel {
+  width:min(650px,100%);max-height:100%;overflow-y:auto;
+  overscroll-behavior:contain;box-sizing:border-box;padding:16px;
+  border:1px solid #8b8bad;border-radius:11px;background:#24293c;
+  box-shadow:0 14px 36px #000d;font:14px/1.4 Arial,sans-serif;
+  -webkit-overflow-scrolling:touch;touch-action:pan-y;
+}
+.ashen-skills-header{display:flex;justify-content:space-between;align-items:center;gap:12px;}
+.ashen-skills-header h2{font:25px Georgia,serif;margin:0;}
+.ashen-skills-close,.ashen-skill-equip{
+  min-height:42px;border-radius:7px;border:1px solid #b7b1d1;
+  padding:8px 12px;background:#454765;color:#f4efff;
+  font:600 13px Arial,sans-serif;cursor:pointer;touch-action:manipulation;
+}
+.ashen-skills-description{margin:10px 0;color:#d2d2df;}
+.ashen-skills-summary{margin:10px 0;color:#cdd3f5;font-weight:600;}
+.ashen-skills-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+.ashen-skill-card{
+  min-width:0;display:flex;flex-direction:column;justify-content:space-between;gap:10px;
+  border:1px solid #6e759b;border-radius:8px;padding:12px;background:#30384e;
+}
+.ashen-skill-details{display:flex;flex-direction:column;gap:4px;min-width:0;}
+.ashen-skill-details strong{font-size:16px;}
+.ashen-skill-details span{color:#d0d8df;font-size:12px;overflow-wrap:anywhere;}
+.ashen-skill-equip:disabled{opacity:.48;cursor:default;}
+.ashen-skill-equip:focus-visible,.ashen-skills-close:focus-visible,
+.ashen-skills-toggle:focus-visible{outline:3px solid #f5d9a7;outline-offset:3px;}
+@media(max-width:600px){
+  .ashen-skills-list{grid-template-columns:1fr;}
+  .ashen-skills-panel{padding:11px;}
+  .ashen-skills-header h2{font-size:21px;}
+  .ashen-skill-card{flex-direction:row;align-items:center;padding:9px;}
+  .ashen-skill-equip{flex:none;min-width:103px;padding:7px 8px;font-size:11px;}
+  .ashen-skills-toggle{padding:8px 11px;font-size:12px;}
+}
