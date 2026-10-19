@@ -25,8 +25,11 @@ interface LocalDungeonScene {
  * cache button overlays and blocks the nearby gear pickup.
  */
 async function showObjectiveIfTabbed(page: Page): Promise<void> {
+  // A lone objective has no tabs. If the objective is hidden because
+  // guard loot has priority, the tab must appear and remain tappable.
+  if (await page.locator('#ashen-optional-objective').isVisible()) return;
   const tab = page.locator('#ashen-interaction-objective');
-  if (!(await tab.isVisible())) return;
+  await expect(tab).toBeVisible({ timeout: 10_000 });
   if (test.info().project.name === 'desktop') await tab.click();
   else {
     const box = await tab.boundingBox();
