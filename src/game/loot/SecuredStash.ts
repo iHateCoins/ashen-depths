@@ -58,7 +58,7 @@ function parseSnapshot(raw: string): StashSnapshot | null {
         !Array.isArray(data.items) || data.items.length > STASH_CAPACITY ||
         !data.items.every(validItem) ||
         (data.unlocks !== undefined && (!Array.isArray(data.unlocks) ||
-          data.unlocks.length > 5 || !data.unlocks.every(isValidUnlockId) ||
+          data.unlocks.length > 6 || !data.unlocks.every(isValidUnlockId) ||
           new Set(data.unlocks).size !== data.unlocks.length))) return null;
     const ids = data.items.map(item => item.id);
     if (new Set(ids).size !== ids.length) return null;
