@@ -34,6 +34,20 @@ export const CINDER_BURST: AutoSkillDefinition = {
   cooldownSeconds: 4,
 };
 
+export const SKILL_SLOT_LIMIT = 2;
+
+export const FROST_BLOOM: AutoSkillDefinition = {
+  id: 'frost-bloom', name: 'Frost Bloom', range: 170, radius: 140,
+  damage: 20, cooldownSeconds: 6,
+};
+
+export const ASH_LANCE: AutoSkillDefinition = {
+  id: 'ash-lance', name: 'Ash Lance', range: 320, radius: 28,
+  damage: 65, cooldownSeconds: 3.5,
+};
+
+export const ACTIVE_SKILLS: readonly AutoSkillDefinition[] = [CINDER_BURST, FROST_BLOOM, ASH_LANCE];
+
 /**
  * Skill logic is framework-independent. The scene owns presentation;
  * equipped skills only return casts and mutate enemy HP.
@@ -42,9 +56,12 @@ export class AutoSkillSystem {
   private cooldowns = new Map<string, number>();
   /** Additive damage granted by worn equipment, never manually cast. */
   bonusDamage = 0;
-  readonly equipped: readonly AutoSkillDefinition[];
+  private equippedSkills: AutoSkillDefinition[];
+  get equipped(): readonly AutoSkillDefinition[] { return [...this.equippedSkills]; }
 
-  constructor(equipped: readonly AutoSkillDefinition[] = [CINDER_BURST]) {
+  /** Change loadout without refreshing the scene. Newly slotted skills begin ready. */
+  setEquipped(equipped: readonly AutoSkillDefinition[]): void {
+    if (equipped.length > SKILL_SLOT_LIMIT) throw new Error('Active skill slots full');
     const ids = new Set<string>();
     for (const skill of equipped) {
       if (ids.has(skill.id)) throw new Error(`Duplicate active skill: ${skill.id}`);
@@ -52,9 +69,16 @@ export class AutoSkillSystem {
         throw new Error(`Invalid auto skill definition: ${skill.id}`);
       }
       ids.add(skill.id);
-      this.cooldowns.set(skill.id, 0);
     }
-    this.equipped = [...equipped];
+    // Retain cooldowns when a skill is temporarily removed. Re-equipping it
+    // must not provide an instant cast by resetting a previously used skill.
+    for (const id of ids) if (!this.cooldowns.has(id)) this.cooldowns.set(id, 0);
+    this.equippedSkills = [...equipped];
+  }
+
+  constructor(equipped: readonly AutoSkillDefinition[] = [CINDER_BURST]) {
+    this.equippedSkills = [];
+    this.setEquipped(equipped);
   }
 
   remaining(skillId: string): number {
