@@ -4,7 +4,8 @@ const url = 'http://127.0.0.1:4173/ashen-depths/?seed=42';
 
 async function tap(page: Page, control: Locator): Promise<void> {
   await expect(control).toBeVisible({ timeout: 10000 });
-  await control.scrollIntoViewIfNeeded();
+  // The fixed stash/bag controls must not wait on browser scrolling: the
+  // document deliberately has overflow:hidden in the Phaser app.
   if (test.info().project.name === 'desktop') {
     await control.click();
   } else {
