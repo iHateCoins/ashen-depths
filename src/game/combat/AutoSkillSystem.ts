@@ -72,11 +72,6 @@ export const CRESCENT_CLEAVE: AutoSkillDefinition = {
   range: 165, radius: 90, damage: 45, cooldownSeconds: 3.6,
 };
 
-export const ACTIVE_SKILLS: readonly AutoSkillDefinition[] = [
-  CINDER_BURST, FROST_BLOOM, ASH_LANCE, CRESCENT_CLEAVE,
-  PIERCING_VOLLEY, ARC_RELAY,
-];
-
 /** Physical piercing volley: enemies behind the target can also be hit. */
 export const PIERCING_VOLLEY: AutoSkillDefinition = {
   id: 'piercing-volley', name: 'Piercing Volley', type: 'attack',
@@ -90,6 +85,11 @@ export const ARC_RELAY: AutoSkillDefinition = {
   pattern: 'chain', maxTargets: 3, range: 270, radius: 155,
   damage: 45, cooldownSeconds: 5.2,
 };
+
+export const ACTIVE_SKILLS: readonly AutoSkillDefinition[] = [
+  CINDER_BURST, FROST_BLOOM, ASH_LANCE, CRESCENT_CLEAVE,
+  PIERCING_VOLLEY, ARC_RELAY,
+];
 
 /**
  * Each support is a trade-off, not a free upgrade. At most one support is
@@ -341,4 +341,5 @@ export class AutoSkillSystem {
       visited.push(next);
     }
     return visited;
-  }}
+  }
+}
