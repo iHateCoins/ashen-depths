@@ -92,6 +92,16 @@ describe('clutter-free ground loot rendering', () => {
     expect(loot.bag).toHaveLength(0);
   });
 
+  it('never visually merges items through a wall even if spatially close', () => {
+    const drops = [drop('near', 90, 90), drop('behind-wall', 120, 90)];
+    expect(groupGroundLoot(drops)).toHaveLength(1);
+    const blockedByWall = (a: { x: number }, b: { x: number }) =>
+      a.x < 100 && b.x < 100 || a.x >= 100 && b.x >= 100;
+    const clusters = groupGroundLoot(drops, LOOT_CLUSTER_DISTANCE, blockedByWall);
+    expect(clusters).toHaveLength(2);
+    expect(clusters.map(group => group.members[0].id)).toEqual(['behind-wall', 'near']);
+  });
+
   it('refuses invalid cluster radii', () => {
     expect(() => groupGroundLoot([], 0)).toThrow();
     expect(() => groupGroundLoot([], Number.NaN)).toThrow();
