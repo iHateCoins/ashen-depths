@@ -20,7 +20,7 @@ export function affixBonuses(affix: ItemAffix): {
   attack: number; spell: number; armor: number; health: number;
 } {
   const v = affix.value;
-  const half = v < 0 ? -Math.max(1, Math.round(-v / 2)) : Math.max(1, Math.round(v / 2));
+  const half = v === 0 ? 0 : v < 0 ? -Math.max(1, Math.round(-v / 2)) : Math.max(1, Math.round(v / 2));
   switch (affix.id) {
     case 'sharp': return { attack:v, spell:0, armor:0, health:0 };
     case 'ember': return { attack:0, spell:v, armor:0, health:0 };
