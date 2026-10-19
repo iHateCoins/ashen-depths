@@ -68,15 +68,26 @@ test('full unlock collection still earns extraction-risked Forge Embers and can 
   await expect(stash).toContainText('1 Forge Ember');
   const firstAffix = stash.getByRole('button', { name: 'Reforge Attack Power on Forgotten Iron Cleaver' });
   await tap(page, firstAffix);
-  await expect(stash).toContainText('Affix reforged and saved');
+  await expect(stash).toContainText('CONFIRM to risk erasing or cursing');
+  await expect(stash).toContainText('25% erase');
+  await tap(page, stash.getByRole('button', { name: 'Confirm forge Attack Power on Forgotten Iron Cleaver' }));
   await expect(stash).toContainText('0 Forge Embers');
+  await expect(stash).toContainText('FORGED');
+  await expect(stash).toContainText('No attempts remaining');
   await expect(stash.getByRole('button', { name: /^Reforge / }).first()).toBeDisabled();
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('ashen-depths-stash-v1')!));
   expect(stored.forgeEmbers).toBe(0);
   expect(stored.items).toHaveLength(1);
   expect(stored.items[0].id).toBe('safe-rare-1');
-  expect(stored.items[0].affixes[1]).toEqual({ id: 'ember', label: 'Ember Potency', value: 9 });
-  expect(stored.items[0].affixes[0]).not.toEqual({ id: 'sharp', label: 'Attack Power', value: 7 });
+  expect(stored.items[0].forged).toBe(true);
+  expect(['erased','cursed','reforged']).toContain(stored.items[0].forgeOutcome);
+  const retained = { id: 'ember', label: 'Ember Potency', value: 9 };
+  if (stored.items[0].forgeOutcome === 'erased') {
+    expect(stored.items[0].affixes).toEqual([retained]);
+  } else {
+    expect(stored.items[0].affixes[1]).toEqual(retained);
+    expect(stored.items[0].affixes[0]).not.toEqual({ id: 'sharp', label: 'Attack Power', value: 7 });
+  }
   expect(stored.unlocks).toHaveLength(8);
   expect(errors).toEqual([]);
 });
