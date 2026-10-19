@@ -1,4 +1,4 @@
-import { UNLOCK_CHOICES, type RewardSource, type SkillProgression } from '../combat/SkillProgression';
+import { type RewardSource, type SkillProgression } from '../combat/SkillProgression';
 
 /** Non-blocking expedition discoveries. Only extraction secures choices. */
 export class SkillRewardUI {
@@ -42,7 +42,7 @@ export class SkillRewardUI {
     header.append(this.heading, close);
     const intro = document.createElement('p');
     intro.className = 'ashen-skills-description';
-    intro.textContent = 'Choose one discovery. It remains AT RISK until you extract alive. New skills and supports become usable in later expeditions.';
+    intro.textContent = 'Choose one discovery. It remains AT RISK until you extract alive. New skills and supports become usable in later expeditions. Forge Embers can be spent on secured gear at your next entrance camp.';
     this.count = document.createElement('p');
     this.count.className = 'ashen-skills-summary';
     this.list = document.createElement('div');
@@ -74,10 +74,9 @@ export class SkillRewardUI {
     this.source = this.progression.choicesRemaining[0] ?? null;
     if (!this.source) { this.hide(); this.refresh(); return; }
     this.heading.textContent = this.source === 'cache' ? 'Sealed Cache Discovery' : 'Warden Discovery';
-    this.count.textContent = `${this.progression.choicesRemaining.length} reward choice(s) · ${this.progression.pendingUnlocks.length} unsecured`;
+    this.count.textContent = `${this.progression.choicesRemaining.length} reward choice(s) · ${this.progression.pendingUnlocks.length} unsecured unlocks · ${this.progression.pendingForgeEmbers} unsecured Forge Embers`;
     this.list.replaceChildren();
-    for (const choice of UNLOCK_CHOICES.filter(item =>
-      this.progression.availableChoices.some(candidate => candidate.id === item.id))) {
+    for (const choice of this.progression.rewardChoices) {
       const card = document.createElement('article');
       card.className = 'ashen-skill-card';
       const details = document.createElement('div');
