@@ -8,6 +8,7 @@ export type ResultKind = 'victory' | 'defeat';
 export class ResultOverlay {
   private readonly root: HTMLElement;
   private readonly restartButton: HTMLButtonElement;
+  private readonly description: HTMLElement;
 
   constructor(kind: ResultKind, restart: () => void) {
     const won = kind === 'victory';
@@ -44,10 +45,12 @@ export class ResultOverlay {
     document.body.append(root);
     this.root = root;
     this.restartButton = button;
+    this.description = description;
   }
 
-  show(): void {
+  show(message?: string): void {
     if (!this.root.hidden) return;
+    if (message) this.description.textContent = message;
     this.root.hidden = false;
     // Keyboard accessibility, without scrolling the full-screen game.
     this.restartButton.focus({ preventScroll: true });
