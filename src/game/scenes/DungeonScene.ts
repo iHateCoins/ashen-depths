@@ -375,7 +375,7 @@ export class DungeonScene extends Phaser.Scene {
       .setWordWrapWidth(hudWidth);
     this.status.setWordWrapWidth(hudWidth).setVisible(this.debug.visible);
     this.debugButton?.setX(Math.max(8, width - 146)).setVisible(width >= 900);
-    this.skillStatusLabel?.setY(Math.max(152, height - (width < 600 ? 222 : 109)));
+    this.skillStatusLabel?.setY(width < 600 ? 204 : Math.max(152, height - 109));
     this.dungeonSeedLabel?.setY(Math.max(192, height - 77))
       .setVisible(width >= 600 || this.debug.visible);
   }
