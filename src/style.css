@@ -700,3 +700,6 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
   .ashen-stash-item{align-items:flex-start;flex-wrap:wrap;}
   .ashen-stash-affix-row{width:100%;}
 }
+
+.ashen-stash-forged{font-weight:700;color:#ffbeac!important;}
+.ashen-stash-forge-warning{color:#ffb4a8!important;font-weight:700;font-size:12px;}
