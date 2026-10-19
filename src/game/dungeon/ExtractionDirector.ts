@@ -52,7 +52,8 @@ export function planExtractionSites(layout: DungeonLayout): readonly ExtractionS
     distance(roomPoint(a, layout), center) - distance(roomPoint(b, layout), center) || a.id - b.id
   );
   const first = ranked[1] ?? ranked[0]; // Not the entrance-adjacent shrine's usual chamber.
-  const second = [...chambers].filter(room => room.id !== first.id)
+  const second = [...chambers].filter(room =>
+    room.id !== first.id && room.id !== ranked[0].id)
     .sort((a, b) =>
       distance(roomPoint(b, layout), roomPoint(first, layout)) -
       distance(roomPoint(a, layout), roomPoint(first, layout)) || a.id - b.id
@@ -116,6 +117,13 @@ export class ExtractionDirector {
       this.activeSite = null;
       this.progress = 0;
     }
+  }
+
+  /** A failed persistent write cannot trap the player in a completed exit. */
+  resetAfterSaveFailure(): void {
+    this.finished = false;
+    this.activeSite = null;
+    this.progress = 0;
   }
 
   update(deltaSeconds: number, player: Point, damaged: boolean, defeated: boolean): ExtractionTick {
