@@ -19,7 +19,8 @@ function createElement<K extends keyof HTMLElementTagNameMap>(
 }
 
 function statLines(stats: EquipmentStats): string {
-  return `Attack +${stats.attack} · Spell +${stats.spell} · Armor ${stats.armor} · Health +${stats.health}`;
+  const signed = (value: number): string => `${value >= 0 ? '+' : ''}${value}`;
+  return `Attack ${signed(stats.attack)} · Spell ${signed(stats.spell)} · Armor ${stats.armor} · Health ${signed(stats.health)}`;
 }
 
 function previewDifference(current: EquipmentStats, next: EquipmentStats): string {
@@ -323,6 +324,8 @@ export class LootUI {
     const category = createElement('span', '',
       `${item.rarity.toUpperCase()} · ${item.slot.toUpperCase()} · Level ${item.itemLevel}`);
     details.append(name, category);
+    if (item.forged) details.append(createElement('span', 'ashen-stash-forged',
+      `FORGED · ${item.forgeOutcome?.toUpperCase() ?? 'NO ATTEMPTS REMAINING'}`));
     const bonuses = itemBonuses(item);
     details.append(createElement('span', '', statLines(bonuses)));
     if (item.affixes.length) {
