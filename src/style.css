@@ -359,3 +359,38 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
   .ashen-finish-run{bottom:calc(87px + env(safe-area-inset-bottom));}
   .ashen-finish-warning{bottom:calc(138px + env(safe-area-inset-bottom));}
 }
+
+/* M04 PR04: the waystone offers a deliberate, interruptible mobile escape.
+   It sits above the BAG/STASH row without blocking navigation or the minimap. */
+.ashen-extraction-panel {
+  position:fixed;
+  left:50%;bottom:calc(95px + env(safe-area-inset-bottom));
+  transform:translateX(-50%);z-index:1210;
+  width:min(335px,calc(100vw - 32px));box-sizing:border-box;
+  display:flex;flex-direction:column;align-items:center;gap:5px;
+  padding:10px 12px;border:1px solid #8acbd2;border-radius:9px;
+  background:#18353ef2;color:#d9f2ee;text-align:center;
+  font:12px/1.35 Arial,sans-serif;box-shadow:0 6px 20px #0009;
+  touch-action:manipulation;
+}
+.ashen-extraction-panel[hidden]{display:none;}
+.ashen-extraction-panel strong{font:600 16px/1.25 Georgia,serif;color:#d1f3f0;}
+.ashen-extraction-panel span{color:#c1dadd;}
+.ashen-extraction-notice{color:#9fc5c7;max-width:100%;}
+.ashen-extraction-button {
+  min-height:42px;min-width:150px;padding:8px 13px;
+  border:1px solid #b1e8e8;border-radius:7px;
+  background:#4a7f84;color:#fff8e8;
+  font:600 14px Arial,sans-serif;touch-action:manipulation;cursor:pointer;
+}
+.ashen-extraction-button:disabled{opacity:.55;cursor:default;}
+.ashen-extraction-button:focus-visible{outline:3px solid #f8dda5;outline-offset:3px;}
+@media(max-height:430px){
+  .ashen-extraction-panel{
+    bottom:calc(84px + env(safe-area-inset-bottom));
+    max-width:min(295px,calc(100vw - 30px));
+    padding:6px 9px;gap:3px;font-size:11px;
+  }
+  .ashen-extraction-panel strong{font-size:14px;}
+  .ashen-extraction-button{min-height:36px;padding:6px 12px;}
+}
