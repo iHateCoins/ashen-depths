@@ -1,4 +1,5 @@
 import type { LootItem } from './ExpeditionLoot';
+import { isValidUnlockId } from '../combat/SkillProgression';
 
 export const STASH_STORAGE_KEY = 'ashen-depths-stash-v1';
 export const STASH_CAPACITY = 500;
@@ -13,6 +14,8 @@ interface StashSnapshot {
   revision: number;
   completed: number;
   items: LootItem[];
+  /** Absent in older schema-1 saves; treat as no learned skills. */
+  unlocks?: string[];
 }
 
 export type StashStatus = 'ready' | 'unavailable' | 'corrupt';
@@ -53,7 +56,10 @@ function parseSnapshot(raw: string): StashSnapshot | null {
     if (data.schema !== 1 || !Number.isSafeInteger(data.revision) || data.revision! < 0 ||
         !Number.isSafeInteger(data.completed) || data.completed! < 0 ||
         !Array.isArray(data.items) || data.items.length > STASH_CAPACITY ||
-        !data.items.every(validItem)) return null;
+        !data.items.every(validItem) ||
+        (data.unlocks !== undefined && (!Array.isArray(data.unlocks) ||
+          data.unlocks.length > 5 || !data.unlocks.every(isValidUnlockId) ||
+          new Set(data.unlocks).size !== data.unlocks.length))) return null;
     const ids = data.items.map(item => item.id);
     if (new Set(ids).size !== ids.length) return null;
     return data as StashSnapshot;
@@ -109,11 +115,15 @@ export class SecuredStash {
   get count(): number { return this.data.items.length; }
   get completedExpeditions(): number { return this.data.completed; }
   get items(): readonly LootItem[] { return this.data.items.map(cloneItem); }
+  get unlockedIds(): readonly string[] { return [...(this.data.unlocks ?? [])]; }
 
   /** A successful Warden exit secures carried AND worn gear. */
-  secureExpedition(items: readonly LootItem[]): StashOutcome {
+  secureExpedition(items: readonly LootItem[], unlocks: readonly string[] = []): StashOutcome {
     if (this.state !== 'ready') return this.failure();
     if (!items.every(validItem) || new Set(items.map(item => item.id)).size !== items.length) {
+      return { ok: false, saved: 0, reason: 'invalid-items' };
+    }
+    if (!unlocks.every(isValidUnlockId) || new Set(unlocks).size !== unlocks.length) {
       return { ok: false, saved: 0, reason: 'invalid-items' };
     }
     if (this.data.items.length + items.length > STASH_CAPACITY) {
@@ -134,6 +144,7 @@ export class SecuredStash {
       revision,
       completed: this.data.completed + 1,
       items: [...this.data.items, ...secured],
+      unlocks: [...new Set([...(this.data.unlocks ?? []), ...unlocks])],
     };
     if (!this.commit(next)) return this.failure();
     return { ok: true, saved: secured.length };
