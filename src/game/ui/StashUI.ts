@@ -1,4 +1,4 @@
-import type { ExpeditionLoot, LootItem } from '../loot/ExpeditionLoot';
+import { affixSummary, type ExpeditionLoot, type LootItem } from '../loot/ExpeditionLoot';
 import { SecuredStash } from '../loot/SecuredStash';
 
 function element<K extends keyof HTMLElementTagNameMap>(
@@ -146,7 +146,7 @@ export class StashUI {
       `FORGED — ${item.forgeOutcome === 'erased' ? 'AFFIX ERASED' : item.forgeOutcome === 'cursed' ? 'CURSED' : 'REFORGED'} · No attempts remaining`));
     for (const [index, affix] of item.affixes.entries()) {
       const affixRow = element('div', 'ashen-stash-affix-row');
-      affixRow.append(element('span', '', `${affix.value >= 0 ? '+' : ''}${affix.value} ${affix.label}`));
+      affixRow.append(element('span', '', affixSummary(affix)));
       const armed = this.armedForge?.id === item.id && this.armedForge.index === index;
       const reforge = element('button', 'ashen-stash-reforge',
         item.forged ? 'FORGED · NO ATTEMPTS' : armed ? 'CONFIRM FORGE RISK' : 'FORGE 1 EMBER');
