@@ -1,5 +1,5 @@
 import type { SkillProgression } from '../combat/SkillProgression';
-import { ACTIVE_SKILLS, SKILL_SLOT_LIMIT, SKILL_SUPPORTS, type AutoSkillDefinition, type AutoSkillSystem } from '../combat/AutoSkillSystem';
+import { ACTIVE_SKILLS, SKILL_SLOT_LIMIT, SKILL_SUPPORTS, skillPatternLabel, type AutoSkillDefinition, type AutoSkillSystem } from '../combat/AutoSkillSystem';
 
 /**
  * Expedition-only active skill selection. No purchased/unlocked skills or
@@ -103,10 +103,10 @@ export class SkillLoadoutUI {
       category.className = 'ashen-skill-type';
       category.textContent = `${skill.type.toUpperCase()} · Scales with ${skill.type === 'attack' ? 'Attack Power' : 'Spell Power'}`;
       const stats = document.createElement('span');
-      stats.textContent = `${skill.damage} damage · ${skill.radius}px area · ${skill.range}px range · ${skill.cooldownSeconds}s cooldown`;
+      stats.textContent = `${skill.damage} damage · ${skillPatternLabel(skill, skill.radius)} · ${skill.range}px range · ${skill.cooldownSeconds}s cooldown`;
       if (equipped) {
         const effective = this.skills.effectiveStats(skill.id);
-        stats.textContent = `${effective.damage} damage · ${effective.radius}px area · ${effective.range}px range · ${effective.cooldownSeconds}s cooldown`;
+        stats.textContent = `${effective.damage} damage · ${skillPatternLabel(skill, effective.radius)} · ${effective.range}px range · ${effective.cooldownSeconds}s cooldown`;
         const supportDescription = document.createElement('span');
         supportDescription.className = 'ashen-skill-support-detail';
         supportDescription.textContent = this.skills.supportFor(skill.id)?.description ?? 'No support modifier';
