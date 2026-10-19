@@ -19,6 +19,25 @@ interface LocalDungeonScene {
   defeatOverlay: { show: () => void };
 }
 
+/**
+ * Loot from defeated cache guards may share the interaction dock with the
+ * reward. The test must explicitly select OBJECTIVE rather than assuming the
+ * cache button overlays and blocks the nearby gear pickup.
+ */
+async function showObjectiveIfTabbed(page: Page): Promise<void> {
+  // A lone objective has no tabs. If the objective is hidden because
+  // guard loot has priority, the tab must appear and remain tappable.
+  if (await page.locator('#ashen-optional-objective').isVisible()) return;
+  const tab = page.locator('#ashen-interaction-objective');
+  await expect(tab).toBeVisible({ timeout: 10_000 });
+  if (test.info().project.name === 'desktop') await tab.click();
+  else {
+    const box = await tab.boundingBox();
+    expect(box).not.toBeNull();
+    await page.touchscreen.tap(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  }
+}
+
 test('guarded cache rewards damage, optional shrine heals, and restart resets both', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -55,6 +74,9 @@ test('guarded cache rewards damage, optional shrine heals, and restart resets bo
     for (const enemy of scene.enemies) if (guardians.has(enemy.id)) enemy.hp = 0;
   });
 
+  await expect.poll(() => panel.locator('.ashen-objective-button').textContent(),
+    { timeout: 10_000 }).toBe('OPEN CACHE');
+  await showObjectiveIfTabbed(page);
   const button = panel.getByRole('button', { name: 'OPEN CACHE' });
   await expect(button).toBeEnabled({ timeout: 10_000 });
   if (test.info().project.name === 'desktop') await button.click();
@@ -90,6 +112,9 @@ test('guarded cache rewards damage, optional shrine heals, and restart resets bo
     scene.health.hp = 60;
   });
 
+  await expect.poll(() => panel.locator('.ashen-objective-button').textContent(),
+    { timeout: 10_000 }).toBe('USE SHRINE');
+  await showObjectiveIfTabbed(page);
   const shrineButton = panel.getByRole('button', { name: 'USE SHRINE' });
   await expect(shrineButton).toBeEnabled({ timeout: 10_000 });
   if (test.info().project.name === 'desktop') await shrineButton.click();

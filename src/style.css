@@ -451,3 +451,142 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
   .ashen-loot-nearby{max-height:calc(100vh - 105px);overflow:auto;}
   .ashen-loot-picker-panel{padding:8px 12px;}
 }
+
+/*
+ * M04 / PR06 — one interaction surface for waystones and nearby loot.
+ * All original panels stay in the DOM for their existing event handlers,
+ * but are never simultaneously rendered on top of one another.
+ * The tab bar appears ONLY when both actions are available.
+ */
+.ashen-interaction-dock {
+  position:fixed;
+  left:50%;
+  bottom:calc(94px + env(safe-area-inset-bottom));
+  transform:translateX(-50%);
+  width:min(350px,calc(100vw - 24px));
+  max-height:calc(100dvh - 108px - env(safe-area-inset-bottom));
+  box-sizing:border-box;
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  gap:5px;
+  z-index:1210;
+  pointer-events:none;
+}
+.ashen-interaction-dock[hidden] {display:none;}
+.ashen-interaction-tabs {
+  display:flex;
+  gap:6px;
+  flex:none;
+  pointer-events:auto;
+}
+.ashen-interaction-tabs[hidden] {display:none;}
+.ashen-interaction-tabs button {
+  flex:1 1 0;
+  min-height:44px;
+  min-width:0;
+  padding:9px 12px;
+  border:1px solid #799697;
+  border-radius:7px;
+  background:#22343a;
+  color:#d1dcd9;
+  font:600 13px Arial,sans-serif;
+  cursor:pointer;
+  touch-action:manipulation;
+}
+.ashen-interaction-tabs button[hidden] {display:none;}
+.ashen-interaction-tabs button[aria-pressed="true"] {
+  background:#46656b;
+  border-color:#bbdadd;
+  color:#f1f7ee;
+}
+.ashen-interaction-tabs button:focus-visible {
+  outline:3px solid #f7d9a5;
+  outline-offset:3px;
+}
+.ashen-interaction-dock > .ashen-loot-nearby,
+.ashen-interaction-dock > .ashen-objective-panel,
+.ashen-interaction-dock > .ashen-extraction-panel {
+  position:relative;
+  inset:auto;
+  left:auto;
+  right:auto;
+  bottom:auto;
+  transform:none;
+  width:100%;
+  max-width:none;
+  max-height:min(250px,calc(100dvh - 170px - env(safe-area-inset-bottom)));
+  min-height:0;
+  overflow-y:auto;
+  overflow-x:hidden;
+  flex-shrink:1;
+  box-sizing:border-box;
+  margin:0;
+  pointer-events:auto;
+  -webkit-overflow-scrolling:touch;
+  touch-action:pan-y;
+}
+.ashen-interaction-dock > .ashen-loot-nearby[hidden],
+.ashen-interaction-dock > .ashen-objective-panel[hidden],
+.ashen-interaction-dock > .ashen-extraction-panel[hidden] {
+  display:none;
+}
+.ashen-interaction-dock[data-active="loot"] > .ashen-objective-panel,
+.ashen-interaction-dock[data-active="loot"] > .ashen-extraction-panel,
+.ashen-interaction-dock[data-active="objective"] > .ashen-loot-nearby,
+.ashen-interaction-dock[data-active="objective"] > .ashen-extraction-panel,
+.ashen-interaction-dock[data-active="extract"] > .ashen-loot-nearby,
+.ashen-interaction-dock[data-active="extract"] > .ashen-objective-panel {
+  display:none;
+}
+@media (max-height:430px) {
+  .ashen-interaction-dock {
+    bottom:calc(80px + env(safe-area-inset-bottom));
+    max-height:calc(100dvh - 94px - env(safe-area-inset-bottom));
+    width:min(335px,calc(100vw - 28px));
+  }
+  .ashen-interaction-dock > .ashen-loot-nearby,
+  .ashen-interaction-dock > .ashen-objective-panel,
+  .ashen-interaction-dock > .ashen-extraction-panel {
+    max-height:calc(100dvh - 145px - env(safe-area-inset-bottom));
+    padding:6px 10px;
+  }
+  .ashen-interaction-tabs button {
+    min-height:40px;
+    padding:6px 10px;
+  }
+}
+
+/* Warden completion stays inside the dock, directly below any uncollected
+   rare drop, instead of covering its pickup control with a fixed CTA. */
+.ashen-interaction-dock > .ashen-finish-run {
+  position:relative;
+  inset:auto;
+  left:auto;
+  top:auto;
+  right:auto;
+  bottom:auto;
+  transform:none;
+  flex:none;
+  width:100%;
+  box-sizing:border-box;
+  margin:0;
+  max-width:none;
+  pointer-events:auto;
+}
+.ashen-interaction-dock > .ashen-finish-run[hidden] {display:none;}
+.ashen-interaction-dock > .ashen-finish-warning {
+  position:relative;
+  inset:auto;
+  left:auto;
+  right:auto;
+  top:auto;
+  bottom:auto;
+  transform:none;
+  width:100%;
+  box-sizing:border-box;
+  flex:none;
+  margin:0;
+  pointer-events:auto;
+}
+.ashen-interaction-dock > .ashen-finish-warning[hidden] {display:none;}
