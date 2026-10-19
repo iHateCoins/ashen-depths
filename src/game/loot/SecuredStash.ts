@@ -52,7 +52,7 @@ function validItem(value: unknown): value is LootItem {
     affix && typeof affix === 'object' &&
     ['sharp','sturdy','ember','vital'].includes(affix.id) &&
     typeof affix.label === 'string' && affix.label.length <= 120 &&
-    Number.isFinite(affix.value) && Number.isInteger(affix.value) &&
+    Number.isFinite(affix.value) &&
     affix.value >= (item.forged ? -10000 : 0) && affix.value <= 10000
   );
 }
