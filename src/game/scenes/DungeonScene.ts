@@ -171,7 +171,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M05 / PR03', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M05 / PR04', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(198).setVisible(false);
     this.dungeonSeedLabel = this.add.text(14, 0, `DUNGEON SEED: ${this.dungeon.seed}`, {
@@ -600,6 +600,7 @@ export class DungeonScene extends Phaser.Scene {
     // Ember Edge and weapon/affix attack bonuses are independent and stack.
     this.combat.bonusDamage = this.optionalObjectives.attackBonus + stats.attack;
     this.skills.bonusDamage = stats.spell;
+    this.skills.bonusAttackDamage = stats.attack;
     this.health.setMaxHp(100 + stats.health);
   }
 
@@ -774,9 +775,11 @@ export class DungeonScene extends Phaser.Scene {
       this.showDamage(enemy.position, attack.damage, '#fff0b6');
     }
     for (const cast of this.skills.update(this.movement.position, this.enemies, delta / 1000, canSee)) {
-      const color = cast.skillId === 'frost-bloom' ? 0x74cce2
+      const color = cast.skillId === 'crescent-cleave' ? 0xe8bb6c
+        : cast.skillId === 'frost-bloom' ? 0x74cce2
         : cast.skillId === 'ash-lance' ? 0xb28ce8 : 0xe56c32;
-      const rim = cast.skillId === 'frost-bloom' ? 0xb9f4ff
+      const rim = cast.skillId === 'crescent-cleave' ? 0xffedac
+        : cast.skillId === 'frost-bloom' ? 0xb9f4ff
         : cast.skillId === 'ash-lance' ? 0xe2ccff : 0xffb16e;
       const burst = this.add.circle(cast.center.x, cast.center.y, cast.radius, color, 0.25)
         .setStrokeStyle(4, rim, 0.9).setDepth(12);
@@ -784,7 +787,7 @@ export class DungeonScene extends Phaser.Scene {
       for (const hit of cast.hits) {
         const enemy = this.enemies.find(e => e.id === hit.enemyId);
         if (enemy) this.showDamage(enemy.position, hit.damage,
-          cast.skillId === 'frost-bloom' ? '#a8ebfb' : cast.skillId === 'ash-lance' ? '#e0baff' : '#ff9a5c');
+          cast.skillId === 'crescent-cleave' ? '#ffdc93' : cast.skillId === 'frost-bloom' ? '#a8ebfb' : cast.skillId === 'ash-lance' ? '#e0baff' : '#ff9a5c');
       }
     }
     // Both attacks and skills change health; synchronize enemy visuals once per frame.
@@ -793,7 +796,7 @@ export class DungeonScene extends Phaser.Scene {
       ? this.skills.equipped.map(skill => {
         const remaining = this.skills.remaining(skill.id);
         const support = this.skills.supportFor(skill.id);
-        return `${skill.name.toUpperCase()}${support ? ' + ' + support.name.toUpperCase() : ''}: ${remaining <= 0.01 ? 'READY' : `${remaining.toFixed(1)}s`}`;
+        return `[${skill.type.toUpperCase()}] ${skill.name.toUpperCase()}${support ? ' + ' + support.name.toUpperCase() : ''}: ${remaining <= 0.01 ? 'READY' : `${remaining.toFixed(1)}s`}`;
       }).join('\n') : 'NO ACTIVE SKILLS');
     for (const strike of updateEnemyAgents(this.enemies,this.movement.position,this.grid,delta/1000)) {
       const flash = this.add.circle(strike.center.x,strike.center.y,strike.radius,
