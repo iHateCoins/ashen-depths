@@ -17,6 +17,8 @@ import { OptionalObjectiveDirector, type OptionalObjectiveKind } from '../dungeo
 import { OptionalObjectiveUI } from '../ui/OptionalObjectiveUI';
 import { ExpeditionLoot, type GroundLoot } from '../loot/ExpeditionLoot';
 import { LootUI } from '../ui/LootUI';
+import { EquipmentLoadout } from '../loot/EquipmentLoadout';
+import type { EquipmentSlot } from '../loot/ExpeditionLoot';
 
 const WORLD_WIDTH = 2304;
 const WORLD_HEIGHT = 1536;
@@ -56,6 +58,7 @@ export class DungeonScene extends Phaser.Scene {
   private objectiveMarkers = new Map<OptionalObjectiveKind, Phaser.GameObjects.Text>();
   private objectiveLabel!: Phaser.GameObjects.Text;
   private loot!: ExpeditionLoot;
+  private loadout!: EquipmentLoadout;
   private lootUi!: LootUI;
   private groundVisuals = new Map<string, Phaser.GameObjects.Container>();
   private victoryOverlay!: ResultOverlay;
@@ -73,13 +76,15 @@ export class DungeonScene extends Phaser.Scene {
     this.roomEncounters = new RoomEncounterDirector(this.dungeon, this.grid);
     this.optionalObjectives = new OptionalObjectiveDirector(this.dungeon, this.roomEncounters);
     this.loot = new ExpeditionLoot(this.dungeon.seed);
+    this.loadout = new EquipmentLoadout(this.loot);
     this.groundVisuals.clear();
     this.renderDungeon();
     this.renderOptionalMarkers();
     // Scenes restart without rebuilding the TypeScript object; reset every run.
-    this.health.reset();
+    this.health = new PlayerHealth();
     this.combat = new AutoCombat();
     this.skills = new AutoSkillSystem();
+    this.recalculateEquipment();
     this.kills = 0;
     this.finalized = false;
     this.enemies = [];
@@ -140,7 +145,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.add.text(14, 0, 'ASHEN DEPTHS · M04 / PR01', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.add.text(14, 0, 'ASHEN DEPTHS · M04 / PR02', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(32);
     this.dungeonSeedLabel = this.add.text(14, 0, `DUNGEON SEED: ${this.dungeon.seed}`, {
@@ -159,7 +164,13 @@ export class DungeonScene extends Phaser.Scene {
     // These are actual DOM buttons above the canvas. Phaser's interactive
     // Container children can be offset by the scrolling/zooming camera.
     this.optionalUi = new OptionalObjectiveUI(kind => this.activateOptionalObjective(kind));
-    this.lootUi = new LootUI(this.loot, id => this.pickupGroundLoot(id), id => this.discardBagItem(id));
+    this.lootUi = new LootUI(
+      this.loot, this.loadout,
+      id => this.pickupGroundLoot(id),
+      id => this.discardBagItem(id),
+      id => this.equipBagItem(id),
+      slot => this.unequipGear(slot),
+    );
     this.defeatOverlay = new ResultOverlay('defeat', () => this.scene.restart());
     this.victoryOverlay = new ResultOverlay('victory', () => this.scene.restart());
     const defeatOverlay = this.defeatOverlay;
@@ -274,7 +285,7 @@ export class DungeonScene extends Phaser.Scene {
     );
     if (!reward) return;
     if (reward.kind === 'ember-edge') {
-      this.combat.bonusDamage = reward.damageBonus;
+      this.recalculateEquipment();
       this.showCombatText(this.movement.position,
         `EMBER EDGE · +${reward.damageBonus} DAMAGE`, '#f9cc8d');
     } else {
@@ -403,6 +414,37 @@ export class DungeonScene extends Phaser.Scene {
     this.groundVisuals.set(drop.id, visual);
   }
 
+  private recalculateEquipment(): void {
+    const stats = this.loadout.stats;
+    // Ember Edge and weapon/affix attack bonuses are independent and stack.
+    this.combat.bonusDamage = this.optionalObjectives.attackBonus + stats.attack;
+    this.skills.bonusDamage = stats.spell;
+    this.health.setMaxHp(100 + stats.health);
+  }
+
+  private equipBagItem(id: string): void {
+    if (this.health.defeated || this.finalized) return;
+    if (this.loadout.equip(id) !== 'equipped') return;
+    this.recalculateEquipment();
+    this.refreshLootPrompt();
+    this.updateObjectiveStatus();
+    this.showCombatText(this.movement.position, 'EQUIPMENT CHANGED', '#d1e7bf');
+  }
+
+  private unequipGear(slot: EquipmentSlot): void {
+    if (this.health.defeated || this.finalized) return;
+    const result = this.loadout.unequip(slot);
+    if (result === 'bag-full') {
+      this.showCombatText(this.movement.position, 'BAG FULL', '#ffad8c');
+      return;
+    }
+    if (result !== 'unequipped') return;
+    this.recalculateEquipment();
+    this.refreshLootPrompt();
+    this.updateObjectiveStatus();
+    this.showCombatText(this.movement.position, 'GEAR REMOVED', '#d1e7bf');
+  }
+
   private pickupGroundLoot(id: string): void {
     if (this.health.defeated) return;
     const result = this.loot.pickUp(id, this.movement.position,
@@ -448,13 +490,18 @@ export class DungeonScene extends Phaser.Scene {
     } else {
       objective = 'EXPLORE · FIND THE DEEP CHAMBER';
     }
-    this.objectiveLabel.setText(`${objective}\n${alive} enemies alive · ${localHostiles} from this room\nBag ${this.loot.bag.length}/${this.loot.capacity} · Side ${this.optionalObjectives.claimedCount}/${this.optionalObjectives.totalCount} · Basic +${this.combat.bonusDamage}`);
+    const worn = this.loadout.stats;
+    this.objectiveLabel.setText(`${objective}\n${alive} enemies alive · ${localHostiles} from this room\nBag ${this.loot.bag.length}/${this.loot.capacity} · Side ${this.optionalObjectives.claimedCount}/${this.optionalObjectives.totalCount}\nGear ${this.loadout.equippedCount}/3 · Attack +${this.combat.bonusDamage} · Spell +${worn.spell} · Armor ${worn.armor}`);
     document.documentElement.dataset.ashenEncounter = this.roomEncounters.completed ? 'complete' : 'explore';
     document.documentElement.dataset.ashenGuardianAlive = String(guardianAlive);
     document.documentElement.dataset.ashenEnemyCount = String(alive);
     document.documentElement.dataset.ashenRoomHostiles = String(localHostiles);
     document.documentElement.dataset.ashenOptionalObjectives = String(this.optionalObjectives.claimedCount);
     document.documentElement.dataset.ashenBasicDamageBonus = String(this.combat.bonusDamage);
+    document.documentElement.dataset.ashenEquipmentCount = String(this.loadout.equippedCount);
+    document.documentElement.dataset.ashenArmor = String(worn.armor);
+    document.documentElement.dataset.ashenSpellBonus = String(worn.spell);
+    document.documentElement.dataset.ashenMaxHp = String(this.health.maxHp);
   }
 
   private renderAttackWarnings(): void {
@@ -553,9 +600,10 @@ export class DungeonScene extends Phaser.Scene {
       const flash = this.add.circle(strike.center.x,strike.center.y,strike.radius,
         strike.hit ? 0xf26b57 : 0x89baa3,0.28).setDepth(12);
       this.tweens.add({targets:flash,alpha:0,scale:1.1,duration:240,onComplete:()=>flash.destroy()});
-      if (strike.hit && this.health.damage(strike.damage)) {
+      const mitigatedDamage = Math.max(1, strike.damage - this.loadout.stats.armor);
+      if (strike.hit && this.health.damage(mitigatedDamage)) {
         this.cameras.main.shake(110,0.002);
-        this.showDamage(this.movement.position,strike.damage,'#ff7777');
+        this.showDamage(this.movement.position,mitigatedDamage,'#ff7777');
       } else if (!strike.hit) {
         this.showCombatText(strike.center,'DODGED','#b0e2ca');
       }
