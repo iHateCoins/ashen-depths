@@ -4,6 +4,8 @@ import { isValidUnlockId, UNLOCK_CHOICES } from '../combat/SkillProgression';
 export const STASH_STORAGE_KEY = 'ashen-depths-stash-v1';
 export const STASH_CAPACITY = 500;
 export const MAX_FORGE_EMBERS = 999999;
+/** One-use forge attempt outcomes: 25% lose affix, 20% become cursed, 55% reroll. */
+export const FORGE_ODDS = { erased: 25, cursed: 20, reforged: 55 } as const;
 
 export interface StashStorage {
   getItem(key: string): string | null;
@@ -41,13 +43,17 @@ function validItem(value: unknown): value is LootItem {
       !(['common','magic','rare'] as unknown[]).includes(item.rarity) ||
       !(['weapon','armor','charm'] as unknown[]).includes(item.slot) ||
       !Number.isInteger(item.itemLevel) || item.itemLevel! < 1 || item.itemLevel! > 1000 ||
-      !Array.isArray(item.affixes) || item.affixes.length > 8) return false;
+      !Array.isArray(item.affixes) || item.affixes.length > 8 ||
+      (item.forged !== undefined && item.forged !== true) ||
+      (item.forgeOutcome !== undefined && !['erased', 'cursed', 'reforged'].includes(item.forgeOutcome)) ||
+      (item.forged === true) !== (item.forgeOutcome !== undefined)) return false;
 
   return item.affixes.every(affix =>
     affix && typeof affix === 'object' &&
     ['sharp','sturdy','ember','vital'].includes(affix.id) &&
     typeof affix.label === 'string' && affix.label.length <= 120 &&
-    Number.isFinite(affix.value) && affix.value >= 0 && affix.value <= 10000
+    Number.isFinite(affix.value) && Number.isInteger(affix.value) &&
+    affix.value >= (item.forged ? -10000 : 0) && affix.value <= 10000
   );
 }
 
@@ -94,6 +100,8 @@ export class SecuredStash {
   private data = freshSnapshot();
   private state: StashStatus = 'ready';
   private lastStored: string | null = null;
+  /** Currency acquired during THIS run cannot be forged until a new run loads. */
+  private spendableEmbers = 0;
 
   constructor(private readonly storage: StashStorage | null = tryStorage()) {
     if (!this.storage) {
@@ -110,6 +118,7 @@ export class SecuredStash {
           return;
         }
         this.data = loaded;
+        this.spendableEmbers = loaded.forgeEmbers ?? 0;
       }
     } catch {
       this.state = 'unavailable';
@@ -122,6 +131,7 @@ export class SecuredStash {
   get items(): readonly LootItem[] { return this.data.items.map(cloneItem); }
   get unlockedIds(): readonly string[] { return [...(this.data.unlocks ?? [])]; }
   get forgeEmbers(): number { return this.data.forgeEmbers ?? 0; }
+  get spendableForgeEmbers(): number { return this.spendableEmbers; }
 
   /** A successful Warden exit secures carried AND worn gear. */
   secureExpedition(
@@ -165,18 +175,18 @@ export class SecuredStash {
   }
 
   /**
-   * Reroll exactly one affix on an item that is STILL safely in the stash.
-   * Persist the mutated item and consume exactly one Ember in one localStorage
-   * transaction. A failed write changes neither the item nor the currency.
-   * Rarity, base, level, identity and other affixes are not changed.
+   * One irreversible attempt per item across the lifetime of the equipment.
+   * 25% deletes the selected affix, 20% reverses its bonus into a penalty,
+   * 55% rerolls a legal affix. Persists the one-time marker and Ember spend
+   * atomically; all other affixes and item identity remain intact.
    */
   reforgeItem(id: string, affixIndex: number): boolean {
-    if (this.state !== 'ready' || this.forgeEmbers < 1 ||
+    if (this.state !== 'ready' || this.spendableEmbers < 1 ||
         !Number.isInteger(affixIndex)) return false;
     const index = this.data.items.findIndex(item => item.id === id);
     if (index < 0) return false;
     const original = this.data.items[index];
-    if (original.rarity === 'common' || affixIndex < 0 ||
+    if (original.rarity === 'common' || original.forged === true || affixIndex < 0 ||
         affixIndex >= original.affixes.length) return false;
     const nextItem = cloneItem(original);
     const old = nextItem.affixes[affixIndex];
@@ -190,24 +200,37 @@ export class SecuredStash {
     const itemHash = [...id].reduce((state, char) =>
       lootHash(state, char.charCodeAt(0)), 0xFACE);
     const random = lootHash(itemHash, this.data.revision, affixIndex, original.itemLevel);
-    const affixId = candidates[random % candidates.length];
-    // Item level matters, but no endless power inflation from reforge loops.
-    const maxRoll = 4 + original.itemLevel * 2;
-    let value = 2 + (lootHash(random, 0xBEEF) % maxRoll);
-    if (affixId === old.id && value === old.value) {
-      value = 2 + ((value - 1) % maxRoll);
+    const outcome = random % 100;
+    if (outcome < FORGE_ODDS.erased) {
+      nextItem.affixes.splice(affixIndex, 1);
+      nextItem.forgeOutcome = 'erased';
+    } else if (outcome < FORGE_ODDS.erased + FORGE_ODDS.cursed) {
+      nextItem.affixes[affixIndex] = { ...old, value: -Math.abs(old.value) };
+      nextItem.forgeOutcome = 'cursed';
+    } else {
+      const affixId = candidates[lootHash(random, 0xA11CE) % candidates.length];
+      // Item level bounds the possible roll; rerolling never levels an item up.
+      const maxRoll = 4 + original.itemLevel * 2;
+      let value = 2 + (lootHash(random, 0xBEEF) % maxRoll);
+      if (affixId === old.id && value === old.value) {
+        value = 2 + ((value - 1) % maxRoll);
+      }
+      const label = affixId === 'sharp' ? 'Attack Power'
+        : affixId === 'sturdy' ? 'Armor'
+        : affixId === 'ember' ? 'Ember Potency' : 'Maximum Health';
+      nextItem.affixes[affixIndex] = { id: affixId, label, value };
+      nextItem.forgeOutcome = 'reforged';
     }
-    const label = affixId === 'sharp' ? 'Attack Power'
-      : affixId === 'sturdy' ? 'Armor'
-      : affixId === 'ember' ? 'Ember Potency' : 'Maximum Health';
-    nextItem.affixes[affixIndex] = { id: affixId, label, value };
+    nextItem.forged = true;
     const next: StashSnapshot = {
       ...this.data,
       revision: this.data.revision + 1,
       forgeEmbers: this.forgeEmbers - 1,
       items: this.data.items.map((item, i) => i === index ? nextItem : item),
     };
-    return this.commit(next);
+    if (!this.commit(next)) return false;
+    this.spendableEmbers--;
+    return true;
   }
 
   /** Remove a secured item BEFORE placing it in the risky expedition bag. */
