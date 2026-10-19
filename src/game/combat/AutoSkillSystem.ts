@@ -70,7 +70,8 @@ export class AutoSkillSystem {
       }
       ids.add(skill.id);
     }
-    for (const id of this.cooldowns.keys()) if (!ids.has(id)) this.cooldowns.delete(id);
+    // Retain cooldowns when a skill is temporarily removed. Re-equipping it
+    // must not provide an instant cast by resetting a previously used skill.
     for (const id of ids) if (!this.cooldowns.has(id)) this.cooldowns.set(id, 0);
     this.equippedSkills = [...equipped];
   }
