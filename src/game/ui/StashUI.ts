@@ -95,7 +95,10 @@ export class StashUI {
     ].join('|');
     if (this.lastSignature === signature) return;
     this.lastSignature = signature;
-    this.toggle.textContent = `STASH ${this.stash.count}`;
+    this.toggle.textContent = this.stash.status === 'ready'
+      ? `STASH ${this.stash.count}` : 'STASH ERROR';
+    this.toggle.title = this.stash.status === 'ready'
+      ? 'View secured equipment' : 'Stored equipment unavailable — open for details';
     if (this.open) this.render();
   }
 
