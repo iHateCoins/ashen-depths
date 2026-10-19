@@ -23,6 +23,8 @@ export class StashUI {
   private readonly instructions: HTMLElement;
   private readonly count: HTMLElement;
   private readonly onWithdraw: (id: string) => void;
+  private readonly onReforge: (id: string, affixIndex: number) => boolean;
+  private forgeNotice = '';
   private open = false;
   private canWithdraw = false;
   private isBagFull = false;
@@ -32,8 +34,10 @@ export class StashUI {
     private readonly stash: SecuredStash,
     private readonly loot: ExpeditionLoot,
     onWithdraw: (id: string) => void,
+    onReforge: (id: string, affixIndex: number) => boolean,
   ) {
     this.onWithdraw = onWithdraw;
+    this.onReforge = onReforge;
     this.toggle = element('button', 'ashen-stash-toggle', 'STASH');
     this.toggle.id = 'ashen-stash-toggle';
     this.toggle.type = 'button';
@@ -91,6 +95,7 @@ export class StashUI {
     this.isBagFull = bagFull;
     const signature = [
       this.stash.status, this.stash.count, this.stash.completedExpeditions,
+      this.stash.forgeEmbers,
       canWithdraw, bagFull,
     ].join('|');
     if (this.lastSignature === signature) return;
@@ -114,9 +119,9 @@ export class StashUI {
     }
 
     this.instructions.textContent = this.canWithdraw
-      ? 'Preparing at the entrance: WITHDRAW moves an item from safety into this expedition. It can be lost if you die or abandon the run.'
-      : 'Stash view only. Return to camp on a new expedition to withdraw gear. Dungeon loot can only be deposited by finishing successfully.';
-    this.count.textContent = `${this.stash.count} secured items · ${this.stash.completedExpeditions} successful expedition${this.stash.completedExpeditions === 1 ? '' : 's'}`;
+      ? 'At entrance camp, WITHDRAW risks equipment in this expedition. REFORGE costs one secured Forge Ember and replaces one selected magic/rare affix with a random roll; it may be better or worse. Reforges are saved immediately.'
+      : 'View only after leaving camp. On your next expedition you can withdraw gear or spend secured Forge Embers on stored gear. Loot can only be secured through extraction.';
+    this.count.textContent = `${this.stash.count} secured items · ${this.stash.forgeEmbers} Forge Ember${this.stash.forgeEmbers === 1 ? '' : 's'} · ${this.stash.completedExpeditions} successful expedition${this.stash.completedExpeditions === 1 ? '' : 's'}${this.forgeNotice ? ' · ' + this.forgeNotice : ''}`;
     this.items.replaceChildren();
     const items = this.stash.items;
     if (!items.length) {
@@ -135,8 +140,26 @@ export class StashUI {
       : item.rarity === 'magic' ? '#88b9f9' : '#ced3d4';
     const type = element('span', '', `${item.rarity.toUpperCase()} · ${item.slot.toUpperCase()} · LEVEL ${item.itemLevel}`);
     details.append(name, type);
-    for (const affix of item.affixes) {
-      details.append(element('span', '', `+${affix.value} ${affix.label}`));
+    for (const [index, affix] of item.affixes.entries()) {
+      const affixRow = element('div', 'ashen-stash-affix-row');
+      affixRow.append(element('span', '', `+${affix.value} ${affix.label}`));
+      const reforge = element('button', 'ashen-stash-reforge', 'REFORGE 1 EMBER');
+      reforge.type = 'button';
+      reforge.disabled = !this.canWithdraw || this.stash.forgeEmbers < 1;
+      reforge.setAttribute('aria-label', `Reforge ${affix.label} on ${item.name}`);
+      reforge.title = !this.canWithdraw ? 'Only available at entrance camp'
+        : this.stash.forgeEmbers < 1 ? 'Requires a secured Forge Ember'
+          : 'Randomly changes this affix. Results can be better or worse; costs 1 Forge Ember.';
+      reforge.addEventListener('click', () => {
+        if (!this.canWithdraw || this.stash.forgeEmbers < 1) return;
+        const ok = this.onReforge(item.id, index);
+        this.forgeNotice = ok ? 'Affix reforged and saved'
+          : 'Reforge could not be saved; no Ember spent';
+        this.lastSignature = '';
+        this.refresh(this.canWithdraw, this.loot.bagFull);
+      });
+      affixRow.append(reforge);
+      details.append(affixRow);
     }
     const withdraw = element('button', 'ashen-stash-withdraw', 'WITHDRAW');
     withdraw.type = 'button';
