@@ -14,12 +14,14 @@ async function unlockSkillCatalog(page: Page): Promise<void> {
 
 async function tap(page: Page, control: Locator): Promise<void> {
   await expect(control).toBeVisible({ timeout: 12_000 });
+  // A visible control can still be BELOW the scrolled edge of the modal,
+  // especially in 844x390 landscape. Touchscreen.tap(x, y) never scrolls and
+  // silently taps the wrong surface if the center is outside the viewport.
+  await control.scrollIntoViewIfNeeded();
   if (test.info().project.name === 'desktop') {
     await control.click();
   } else {
-    const rect = await control.boundingBox();
-    expect(rect).not.toBeNull();
-    await page.touchscreen.tap(rect!.x + rect!.width / 2, rect!.y + rect!.height / 2);
+    await control.tap(); // Playwright ensures the target is in view and receives the tap.
   }
 }
 
@@ -70,6 +72,9 @@ test('camp departure disables loadout changes and restart resets skills', async 
   await expect(page.locator('canvas')).toBeVisible({ timeout: 20_000 });
   await tap(page, page.locator('#ashen-skills-toggle'));
   await tap(page, page.locator('#ashen-skills-overlay').getByRole('button', { name: 'Equip Frost Bloom' }));
+  // Fail immediately at the point of interaction, rather than allowing a missed
+  // landscape tap to surface much later as a misleading camp-lock failure.
+  await expect.poll(() => equipped(page)).toEqual(['cinder-burst', 'frost-bloom']);
   await tap(page, page.locator('#ashen-skills-overlay').getByRole('button', { name: 'CLOSE' }));
 
   await page.evaluate(() => {

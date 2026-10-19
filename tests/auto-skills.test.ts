@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AutoCombat, type Enemy } from '../src/game/combat/AutoCombat';
-import { AutoSkillSystem, CINDER_BURST, FROST_BLOOM, ASH_LANCE, SKILL_SLOT_LIMIT, SKILL_SUPPORTS } from '../src/game/combat/AutoSkillSystem';
+import { AutoSkillSystem, CINDER_BURST, FROST_BLOOM, ASH_LANCE, SKILL_SLOT_LIMIT, SKILL_SUPPORTS, CRESCENT_CLEAVE } from '../src/game/combat/AutoSkillSystem';
 
 const enemy = (id: number, x: number, y = 0, hp = 100): Enemy =>
   ({ id, position: { x, y }, hp, maxHp: 100 });
@@ -171,6 +171,18 @@ describe('automatic skill selection', () => {
     const casts = system.update({ x: 0, y: 0 }, targets, 0.016, clear);
     expect(casts[0].hits.map(hit => hit.enemyId)).toEqual([1]);
     expect(targets[1].hp).toBe(100);
+  });
+
+  it('physical skills use Attack Power but not Spell Power; spells use Spell Power only', () => {
+    const physical = new AutoSkillSystem([CRESCENT_CLEAVE]);
+    physical.bonusAttackDamage = 13;
+    physical.bonusDamage = 99;
+    expect(physical.effectiveStats(CRESCENT_CLEAVE.id)).toMatchObject({type:'attack',damage:58});
+    const spell = new AutoSkillSystem([CINDER_BURST]);
+    spell.bonusAttackDamage = 99;
+    spell.bonusDamage = 13;
+    expect(spell.effectiveStats(CINDER_BURST.id)).toMatchObject({type:'spell',damage:48});
+    expect(physical.update({x:0,y:0},[enemy(1,45,0,200)],0.016)[0].hits[0].damage).toBe(58);
   });
 
   it('prevents basic attacks through obstructions', () => {

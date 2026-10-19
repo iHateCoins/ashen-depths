@@ -679,3 +679,6 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
 .ashen-reward-toggle[hidden]{display:none;}
 .ashen-reward-toggle:focus-visible {outline:3px solid #f5d9a7;outline-offset:3px;}
 @media(max-height:430px){.ashen-reward-toggle{bottom:calc(78px + env(safe-area-inset-bottom));left:calc(110px + env(safe-area-inset-left));}}
+
+/* M05 PR04: readable skill damage type and scaling. */
+.ashen-skill-type{font-weight:700;color:#f3d99c!important;letter-spacing:.02em;}
