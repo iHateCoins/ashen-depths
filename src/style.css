@@ -454,7 +454,7 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
 
 /*
  * M04 / PR06 — one interaction surface for waystones and nearby loot.
- * Both original panels stay in the DOM for their existing event handlers,
+ * All original panels stay in the DOM for their existing event handlers,
  * but are never simultaneously rendered on top of one another.
  * The tab bar appears ONLY when both actions are available.
  */
@@ -475,14 +475,14 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
 }
 .ashen-interaction-dock[hidden] {display:none;}
 .ashen-interaction-tabs {
-  display:grid;
-  grid-template-columns:1fr 1fr;
+  display:flex;
   gap:6px;
   flex:none;
   pointer-events:auto;
 }
 .ashen-interaction-tabs[hidden] {display:none;}
 .ashen-interaction-tabs button {
+  flex:1 1 0;
   min-height:44px;
   min-width:0;
   padding:9px 12px;
@@ -494,6 +494,7 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
   cursor:pointer;
   touch-action:manipulation;
 }
+.ashen-interaction-tabs button[hidden] {display:none;}
 .ashen-interaction-tabs button[aria-pressed="true"] {
   background:#46656b;
   border-color:#bbdadd;
@@ -504,6 +505,7 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
   outline-offset:3px;
 }
 .ashen-interaction-dock > .ashen-loot-nearby,
+.ashen-interaction-dock > .ashen-objective-panel,
 .ashen-interaction-dock > .ashen-extraction-panel {
   position:relative;
   inset:auto;
@@ -525,11 +527,16 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
   touch-action:pan-y;
 }
 .ashen-interaction-dock > .ashen-loot-nearby[hidden],
+.ashen-interaction-dock > .ashen-objective-panel[hidden],
 .ashen-interaction-dock > .ashen-extraction-panel[hidden] {
   display:none;
 }
+.ashen-interaction-dock[data-active="loot"] > .ashen-objective-panel,
 .ashen-interaction-dock[data-active="loot"] > .ashen-extraction-panel,
-.ashen-interaction-dock[data-active="extract"] > .ashen-loot-nearby {
+.ashen-interaction-dock[data-active="objective"] > .ashen-loot-nearby,
+.ashen-interaction-dock[data-active="objective"] > .ashen-extraction-panel,
+.ashen-interaction-dock[data-active="extract"] > .ashen-loot-nearby,
+.ashen-interaction-dock[data-active="extract"] > .ashen-objective-panel {
   display:none;
 }
 @media (max-height:430px) {
@@ -539,6 +546,7 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
     width:min(335px,calc(100vw - 28px));
   }
   .ashen-interaction-dock > .ashen-loot-nearby,
+  .ashen-interaction-dock > .ashen-objective-panel,
   .ashen-interaction-dock > .ashen-extraction-panel {
     max-height:calc(100dvh - 145px - env(safe-area-inset-bottom));
     padding:6px 10px;
