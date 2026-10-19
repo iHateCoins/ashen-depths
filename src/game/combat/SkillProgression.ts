@@ -6,7 +6,7 @@ export interface UnlockChoice {
   readonly id: string;
   readonly label: string;
   readonly description: string;
-  readonly kind: 'skill' | 'support';
+  readonly kind: 'skill' | 'support' | 'forge';
 }
 
 export const UNLOCK_CHOICES: readonly UnlockChoice[] = [
@@ -20,6 +20,14 @@ export const UNLOCK_CHOICES: readonly UnlockChoice[] = [
     description: support.description, kind: 'support' as const,
   })),
 ];
+/** Repeatable extraction loot: spend at camp to reroll one secured gear affix. */
+export const FORGE_EMBER_CHOICE: UnlockChoice = {
+  id: 'forge:ember',
+  label: 'Forge Ember',
+  description: 'REPEATABLE · Secure one Forge Ember on extraction; at camp, reroll one affix on stored magic or rare gear. The result may be stronger or weaker.',
+  kind: 'forge',
+};
+
 const KNOWN = new Set(UNLOCK_CHOICES.map(choice => choice.id));
 export const isValidUnlockId = (id: unknown): id is string =>
   typeof id === 'string' && KNOWN.has(id);
@@ -33,6 +41,7 @@ export const isValidUnlockId = (id: unknown): id is string =>
 export class SkillProgression {
   private readonly unlocked: Set<string>;
   private readonly chosen = new Set<string>();
+  private pendingEmbers = 0;
   private readonly offered = new Set<RewardSource>();
   private readonly resolved = new Set<RewardSource>();
 
@@ -42,6 +51,8 @@ export class SkillProgression {
 
   get secured(): readonly string[] { return [...this.unlocked]; }
   get pendingUnlocks(): readonly string[] { return [...this.chosen]; }
+  get pendingForgeEmbers(): number { return this.pendingEmbers; }
+  get rewardChoices(): readonly UnlockChoice[] { return [...this.availableChoices, FORGE_EMBER_CHOICE]; }
   get choicesRemaining(): readonly RewardSource[] {
     return [...this.offered].filter(source => !this.resolved.has(source));
   }
@@ -56,14 +67,19 @@ export class SkillProgression {
 
   /** Discovering a reward never automatically grants or persists an unlock. */
   offer(source: RewardSource): boolean {
-    if (this.offered.has(source) || this.resolved.has(source) || !this.availableChoices.length) return false;
+    if (this.offered.has(source) || this.resolved.has(source)) return false;
     this.offered.add(source);
     return true;
   }
 
   choose(source: RewardSource, id: string): boolean {
-    if (!this.offered.has(source) || this.resolved.has(source) ||
-        !this.availableChoices.some(choice => choice.id === id)) return false;
+    if (!this.offered.has(source) || this.resolved.has(source)) return false;
+    if (id === FORGE_EMBER_CHOICE.id) {
+      this.resolved.add(source);
+      this.pendingEmbers++;
+      return true;
+    }
+    if (!this.availableChoices.some(choice => choice.id === id)) return false;
     this.resolved.add(source);
     this.chosen.add(id);
     return true;
