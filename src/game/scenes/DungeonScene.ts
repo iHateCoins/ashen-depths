@@ -20,6 +20,8 @@ import { LootUI } from '../ui/LootUI';
 import { EquipmentLoadout, EQUIPMENT_SLOTS, mitigatedHitDamage } from '../loot/EquipmentLoadout';
 import { SecuredStash } from '../loot/SecuredStash';
 import { StashUI } from '../ui/StashUI';
+import { ExtractionDirector } from '../dungeon/ExtractionDirector';
+import { ExtractionUI } from '../ui/ExtractionUI';
 import type { EquipmentSlot } from '../loot/ExpeditionLoot';
 
 const WORLD_WIDTH = 2304;
@@ -65,6 +67,9 @@ export class DungeonScene extends Phaser.Scene {
   private securedStash!: SecuredStash;
   private stashUi!: StashUI;
   private campAvailable = true;
+  private extraction!: ExtractionDirector;
+  private extractionUi!: ExtractionUI;
+  private extractionOverlay!: ResultOverlay;
   private lootUi!: LootUI;
   private groundVisuals = new Map<string, Phaser.GameObjects.Container>();
   private victoryOverlay!: ResultOverlay;
@@ -84,10 +89,12 @@ export class DungeonScene extends Phaser.Scene {
     this.loot = new ExpeditionLoot(this.dungeon.seed);
     this.loadout = new EquipmentLoadout(this.loot);
     this.securedStash = new SecuredStash();
+    this.extraction = new ExtractionDirector(this.dungeon);
     this.campAvailable = true;
     this.groundVisuals.clear();
     this.renderDungeon();
     this.renderOptionalMarkers();
+    this.renderExtractionMarkers();
     // Scenes restart without rebuilding the TypeScript object; reset every run.
     this.health = new PlayerHealth();
     this.combat = new AutoCombat();
@@ -122,7 +129,8 @@ export class DungeonScene extends Phaser.Scene {
     this.cameras.main.setZoom(this.zoom);
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.health.defeated || this.finalized || this.lootUi.isOpen) return;
+      if (this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen) return;
+      if (this.extraction.phase === 'channeling') this.cancelExtraction();
       if (pointer.event instanceof MouseEvent && pointer.event.button !== 0) return;
       const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
       const x = Phaser.Math.Clamp(point.x, 24, this.grid.width - 24);
@@ -153,7 +161,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M04 / PR03', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M04 / PR04', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(198).setVisible(false);
     this.dungeonSeedLabel = this.add.text(14, 0, `DUNGEON SEED: ${this.dungeon.seed}`, {
@@ -180,14 +188,18 @@ export class DungeonScene extends Phaser.Scene {
       slot => this.unequipGear(slot),
     );
     this.stashUi = new StashUI(this.securedStash, this.loot, id => this.withdrawFromStash(id));
+    this.extractionUi = new ExtractionUI(id => this.startExtraction(id), () => this.cancelExtraction());
     this.defeatOverlay = new ResultOverlay('defeat', () => this.scene.restart());
     this.victoryOverlay = new ResultOverlay('victory', () => this.scene.restart());
+    this.extractionOverlay = new ResultOverlay('extraction', () => this.scene.restart());
     const defeatOverlay = this.defeatOverlay;
     const victoryOverlay = this.victoryOverlay;
     const explorationView = this.explorationView;
     const optionalUi = this.optionalUi;
     const lootUi = this.lootUi;
     const stashUi = this.stashUi;
+    const extractionUi = this.extractionUi;
+    const extractionOverlay = this.extractionOverlay;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       defeatOverlay.destroy();
       victoryOverlay.destroy();
@@ -195,6 +207,8 @@ export class DungeonScene extends Phaser.Scene {
       optionalUi.destroy();
       lootUi.destroy();
       stashUi.destroy();
+      extractionUi.destroy();
+      extractionOverlay.destroy();
     });
     this.debugButton = this.add.text(0, 8, 'DEBUG: OFF', {fontFamily:'Arial, sans-serif',fontSize:'14px',color:'#e3c99c',backgroundColor:'#243136',padding:{x:10,y:8}}).setScrollFactor(0).setDepth(110).setInteractive();
     this.debugButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: Phaser.Types.Input.EventData) => { event.stopPropagation(); this.toggleDebug(); });
@@ -286,6 +300,23 @@ export class DungeonScene extends Phaser.Scene {
       }).setOrigin(0.5).setDepth(4);
       outer.setData('objective-kind', objective.id);
       this.objectiveMarkers.set(objective.id, label);
+    }
+  }
+
+  private renderExtractionMarkers(): void {
+    for (const site of this.extraction.sites) {
+      const { x, y } = site.position;
+      const ring = this.add.circle(x, y, 34, 0x5abbd0, 0.16)
+        .setStrokeStyle(3, 0x8be3eb, 0.95).setDepth(4);
+      this.add.circle(x, y, 17, 0x8ad2db, 0.18)
+        .setStrokeStyle(2, 0xcaf3f4, 0.85).setDepth(4);
+      this.add.star(x, y, 4, 8, 17, 0xa6eef2, 0.85)
+        .setStrokeStyle(2, 0x2b6e7c, 0.9).setDepth(5);
+      this.add.text(x, y + 48, 'WAYSTONE · EXTRACTION', {
+        fontFamily: 'Arial, sans-serif', fontSize: '12px',
+        color: '#b1ecf2', stroke: '#10191e', strokeThickness: 3,
+      }).setOrigin(0.5).setDepth(5);
+      ring.setData('waystone-site', site.id);
     }
   }
 
@@ -436,6 +467,33 @@ export class DungeonScene extends Phaser.Scene {
     this.groundVisuals.set(drop.id, visual);
   }
 
+  private startExtraction(id: string): void {
+    if (this.finalized || this.health.defeated || this.roomEncounters.completed ||
+        this.lootUi.isOpen || this.stashUi.isOpen) return;
+    if (!this.extraction.start(id, this.movement.position)) return;
+    this.movement.stop();
+    this.waypoints = [];
+    this.marker.setVisible(false);
+    this.redrawRoute();
+    this.refreshExtractionPrompt();
+  }
+
+  private cancelExtraction(): void {
+    if (this.extraction.phase !== 'channeling') return;
+    this.extraction.cancel();
+    this.refreshExtractionPrompt();
+  }
+
+  private refreshExtractionPrompt(): void {
+    if (this.health.defeated || this.finalized || this.roomEncounters.completed) {
+      this.extractionUi.hide();
+      return;
+    }
+    const nearby = this.extraction.nearby(this.movement.position);
+    this.extractionUi.show(nearby, this.extraction.phase,
+      this.extraction.remaining);
+  }
+
   private withdrawFromStash(id: string): void {
     if (this.health.defeated || this.finalized || !this.campAvailable || this.loot.bagFull) return;
     const item = this.securedStash.withdraw(id);
@@ -447,8 +505,10 @@ export class DungeonScene extends Phaser.Scene {
     this.updateObjectiveStatus();
   }
 
-  private secureAndFinish(): void {
-    if (this.health.defeated || this.finalized || !this.roomEncounters.completed) return;
+  private secureAndFinish(mode: 'warden' | 'early' = 'warden'): void {
+    if (this.health.defeated || this.finalized ||
+        (mode === 'warden' && !this.roomEncounters.completed) ||
+        (mode === 'early' && this.extraction.phase !== 'completed')) return;
     const items = [
       ...this.loot.bag,
       ...EQUIPMENT_SLOTS.map(slot => this.loadout.get(slot)).filter(
@@ -464,20 +524,28 @@ export class DungeonScene extends Phaser.Scene {
           : result.reason === 'invalid-items'
             ? 'Item validation failed. Nothing secured; your run remains playable.'
             : 'On-device save failed. Gear remains in this run. Enable browser storage and retry.';
-      this.lootUi.showFinishError(message);
+      if (mode === 'early') {
+        this.extraction.resetAfterSaveFailure();
+        this.extractionUi.show(this.extraction.nearby(this.movement.position),
+          this.extraction.phase, this.extraction.remaining);
+        this.extractionUi.showError(message + ' You may attempt escape again.');
+      } else {
+        this.lootUi.showFinishError(message);
+      }
       return;
     }
     this.finalized = true;
     this.updateObjectiveStatus();
     this.optionalUi.hide();
+    this.extractionUi.hide();
     this.stashUi.hideForResult();
     this.lootUi.hideForResult();
     this.movement.stop();
     this.waypoints = [];
     this.marker.setVisible(false);
-    this.victoryOverlay.show(
-      `${result.saved} item${result.saved === 1 ? '' : 's'} secured to this device's stash. ${this.securedStash.count} stored. New expedition awaits.`,
-    );
+    const message = `${result.saved} item${result.saved === 1 ? '' : 's'} secured to this device's stash. ${this.securedStash.count} stored. New expedition awaits.`;
+    if (mode === 'early') this.extractionOverlay.show(message);
+    else this.victoryOverlay.show(message);
   }
 
   private recalculateEquipment(): void {
@@ -565,6 +633,11 @@ export class DungeonScene extends Phaser.Scene {
     document.documentElement.dataset.ashenStashCount = String(this.securedStash.count);
     document.documentElement.dataset.ashenStashStatus = this.securedStash.status;
     document.documentElement.dataset.ashenCampOpen = String(this.campAvailable);
+    document.documentElement.dataset.ashenExitCount = String(this.extraction.sites.length);
+    document.documentElement.dataset.ashenExtractionPhase = this.extraction.phase;
+    document.documentElement.dataset.ashenExtractionSite = this.extraction.site?.id ?? '';
+    document.documentElement.dataset.ashenExtractionNearby =
+      this.extraction.nearby(this.movement.position)?.id ?? '';
   }
 
   private renderAttackWarnings(): void {
@@ -613,7 +686,10 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
+    if (this.extraction.phase === 'channeling' &&
+        (this.lootUi.isOpen || this.stashUi.isOpen)) this.cancelExtraction();
     if(this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen) return;
+    const hpBeforeFrame = this.health.hp;
     const oldX = this.movement.position.x;
     const oldY = this.movement.position.y;
     this.movement.update(delta / 1000);
@@ -681,19 +757,36 @@ export class DungeonScene extends Phaser.Scene {
       if(visual) visual.setPosition(enemy.position.x,enemy.position.y);
     }
     this.healthLabel.setText(`HP: ${this.health.hp} / ${this.health.maxHp}`);
+    // Enemy strikes are resolved before extraction can complete. A lethal or
+    // nonlethal hit on the final frame interrupts instead of saving the run.
+    const extractionTick = this.extraction.update(
+      delta / 1000, this.movement.position,
+      this.health.hp < hpBeforeFrame, this.health.defeated,
+    );
+    if (extractionTick === 'interrupted') {
+      this.showCombatText(this.movement.position, 'EXTRACTION INTERRUPTED', '#ffad8b');
+    } else if (extractionTick === 'completed') {
+      this.secureAndFinish('early');
+      this.updateObjectiveStatus();
+      if (this.finalized) return;
+    }
     if (!this.health.defeated && this.roomEncounters.update(this.movement.position, this.enemies)) {
       // Winning is not the same as extracting. Let the player pick up Warden
       // loot and inspect the bag before deliberately finishing the run.
       this.showCombatText(this.movement.position, 'WARDEN DEFEATED', '#f5d7a4');
+      this.extraction.cancel();
+      this.extractionUi.hide();
       this.lootUi.enableFinish(() => this.secureAndFinish());
     }
     this.updateObjectiveStatus();
     this.refreshOptionalPrompt();
     this.refreshLootPrompt();
+    this.refreshExtractionPrompt();
     if(this.health.defeated) {
       this.movement.stop();this.waypoints=[];this.marker.setVisible(false);
       this.lootUi.hideForResult();
       this.stashUi.hideForResult();
+      this.extractionUi.hide();
       this.defeatOverlay.show();
     }
     if (this.debug.visible) this.redrawRoute();
