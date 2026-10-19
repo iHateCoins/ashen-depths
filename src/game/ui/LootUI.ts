@@ -158,9 +158,10 @@ export class LootUI {
       event.preventDefault();
       event.stopPropagation();
       this.closeBag();
-      this.hideForResult();
+      // Do not hide the control until the scene confirms a successful
+      // persistent stash write. Storage errors must allow retry.
       onFinish();
-    }, { once: true });
+    });
   }
 
   showFinishError(message: string): void {
