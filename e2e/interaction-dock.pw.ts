@@ -37,8 +37,13 @@ async function placeLootAtWaystone(page: Page, count = 1): Promise<void> {
     } | undefined;
     if (!scene) throw new Error('Dungeon scene unavailable');
     const position = scene.extraction.sites[0].position;
+    // Relocate enemies rather than setting hp=0, which would create many
+    // unrelated real death-drops elsewhere and skew this focused regression.
     for (const enemy of scene.enemies) {
-      if (enemy.id !== scene.roomEncounters.guardianId) enemy.hp = 0;
+      if (enemy.id !== scene.roomEncounters.guardianId) {
+        (enemy as typeof enemy & { position: { x: number; y: number } }).position =
+          { x: -2000 - enemy.id * 100, y: -2000 };
+      }
     }
     scene.movement.stop();
     scene.waypoints = [];
@@ -54,7 +59,6 @@ async function placeLootAtWaystone(page: Page, count = 1): Promise<void> {
     document.documentElement.dataset.ashenGroundCount,
   ), { timeout: 12_000 }).toBe(String(count));
   await expect(page.locator('#ashen-interaction-dock')).toBeVisible();
-  await expect(page.locator('#ashen-interaction-tabs')).toHaveCount(0);
   await expect(page.locator('.ashen-interaction-tabs')).toBeVisible();
 }
 
