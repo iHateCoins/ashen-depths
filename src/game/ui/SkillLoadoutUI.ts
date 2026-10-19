@@ -4,7 +4,8 @@ import { ACTIVE_SKILLS, SKILL_SLOT_LIMIT, SKILL_SUPPORTS, type AutoSkillDefiniti
 /**
  * Expedition-only active skill selection. No purchased/unlocked skills or
  * persistent character progression are introduced in this milestone.
- * The simulation pauses while the dialog is open. Supports have one socket per\n * equipped skill and are exclusive by support ID within a loadout.
+ * The simulation pauses while the dialog is open. Supports have one socket per
+ * equipped skill and are exclusive by support ID within a loadout.
  */
 export class SkillLoadoutUI {
   private readonly toggle: HTMLButtonElement;
@@ -87,6 +88,7 @@ export class SkillLoadoutUI {
     const editable = this.canModify();
     this.summary.textContent = `${selected.length} / ${SKILL_SLOT_LIMIT} slots · ${selected.length ? selected.map(skill => skill.name).join(' + ') : 'No skills equipped'}${editable ? '' : ' · Changes available at camp only'}`;
     this.list.replaceChildren();
+    // Attack skills scale with Attack Power; spells scale with Spell Power.
 
     for (const skill of ACTIVE_SKILLS) {
       const equipped = selected.some(item => item.id === skill.id);
@@ -97,6 +99,9 @@ export class SkillLoadoutUI {
       details.className = 'ashen-skill-details';
       const name = document.createElement('strong');
       name.textContent = skill.name;
+      const category = document.createElement('span');
+      category.className = 'ashen-skill-type';
+      category.textContent = `${skill.type.toUpperCase()} · Scales with ${skill.type === 'attack' ? 'Attack Power' : 'Spell Power'}`;
       const stats = document.createElement('span');
       stats.textContent = `${skill.damage} damage · ${skill.radius}px area · ${skill.range}px range · ${skill.cooldownSeconds}s cooldown`;
       if (equipped) {
@@ -105,9 +110,9 @@ export class SkillLoadoutUI {
         const supportDescription = document.createElement('span');
         supportDescription.className = 'ashen-skill-support-detail';
         supportDescription.textContent = this.skills.supportFor(skill.id)?.description ?? 'No support modifier';
-        details.append(name, stats, supportDescription);
+        details.append(name, category, stats, supportDescription);
       } else {
-        details.append(name, stats);
+        details.append(name, category, stats);
       }
 
       const action = document.createElement('button');
