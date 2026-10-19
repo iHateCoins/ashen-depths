@@ -23,6 +23,7 @@ import { SecuredStash } from '../loot/SecuredStash';
 import { StashUI } from '../ui/StashUI';
 import { ExtractionDirector } from '../dungeon/ExtractionDirector';
 import { ExtractionUI } from '../ui/ExtractionUI';
+import { InteractionDock } from '../ui/InteractionDock';
 import type { EquipmentSlot } from '../loot/ExpeditionLoot';
 
 const WORLD_WIDTH = 2304;
@@ -70,6 +71,7 @@ export class DungeonScene extends Phaser.Scene {
   private campAvailable = true;
   private extraction!: ExtractionDirector;
   private extractionUi!: ExtractionUI;
+  private interactionDock!: InteractionDock;
   private extractionOverlay!: ResultOverlay;
   private lootUi!: LootUI;
   private groundVisuals = new Map<string, Phaser.GameObjects.Container>();
@@ -162,7 +164,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M04 / PR05', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M04 / PR06', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(198).setVisible(false);
     this.dungeonSeedLabel = this.add.text(14, 0, `DUNGEON SEED: ${this.dungeon.seed}`, {
@@ -190,6 +192,8 @@ export class DungeonScene extends Phaser.Scene {
     );
     this.stashUi = new StashUI(this.securedStash, this.loot, id => this.withdrawFromStash(id));
     this.extractionUi = new ExtractionUI(id => this.startExtraction(id), () => this.cancelExtraction());
+    this.interactionDock = new InteractionDock(() => this.cancelExtraction());
+    this.interactionDock.refresh(false);
     this.defeatOverlay = new ResultOverlay('defeat', () => this.scene.restart());
     this.victoryOverlay = new ResultOverlay('victory', () => this.scene.restart());
     this.extractionOverlay = new ResultOverlay('extraction', () => this.scene.restart());
@@ -200,6 +204,7 @@ export class DungeonScene extends Phaser.Scene {
     const lootUi = this.lootUi;
     const stashUi = this.stashUi;
     const extractionUi = this.extractionUi;
+    const interactionDock = this.interactionDock;
     const extractionOverlay = this.extractionOverlay;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       defeatOverlay.destroy();
@@ -209,6 +214,7 @@ export class DungeonScene extends Phaser.Scene {
       lootUi.destroy();
       stashUi.destroy();
       extractionUi.destroy();
+      interactionDock.destroy();
       extractionOverlay.destroy();
     });
     this.debugButton = this.add.text(0, 8, 'DEBUG: OFF', {fontFamily:'Arial, sans-serif',fontSize:'14px',color:'#e3c99c',backgroundColor:'#243136',padding:{x:10,y:8}}).setScrollFactor(0).setDepth(110).setInteractive();
@@ -501,11 +507,13 @@ export class DungeonScene extends Phaser.Scene {
   private refreshExtractionPrompt(): void {
     if (this.health.defeated || this.finalized || this.roomEncounters.completed) {
       this.extractionUi.hide();
+      this.interactionDock.refresh(false);
       return;
     }
     const nearby = this.extraction.nearby(this.movement.position);
     this.extractionUi.show(nearby, this.extraction.phase,
       this.extraction.remaining);
+    this.interactionDock.refresh(this.extraction.phase === 'channeling');
   }
 
   private withdrawFromStash(id: string): void {
@@ -543,6 +551,7 @@ export class DungeonScene extends Phaser.Scene {
         this.extractionUi.show(this.extraction.nearby(this.movement.position),
           this.extraction.phase, this.extraction.remaining);
         this.extractionUi.showError(message + ' You may attempt escape again.');
+        this.interactionDock.refresh(false);
       } else {
         this.lootUi.showFinishError(message);
       }
@@ -552,6 +561,7 @@ export class DungeonScene extends Phaser.Scene {
     this.updateObjectiveStatus();
     this.optionalUi.hide();
     this.extractionUi.hide();
+    this.interactionDock.hideForResult();
     this.stashUi.hideForResult();
     this.lootUi.hideForResult();
     this.movement.stop();
@@ -801,6 +811,7 @@ export class DungeonScene extends Phaser.Scene {
       this.lootUi.hideForResult();
       this.stashUi.hideForResult();
       this.extractionUi.hide();
+      this.interactionDock.hideForResult();
       this.defeatOverlay.show();
     }
     if (this.debug.visible) this.redrawRoute();
