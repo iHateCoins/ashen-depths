@@ -25,6 +25,8 @@ import { ExtractionDirector } from '../dungeon/ExtractionDirector';
 import { ExtractionUI } from '../ui/ExtractionUI';
 import { InteractionDock } from '../ui/InteractionDock';
 import { SkillLoadoutUI } from '../ui/SkillLoadoutUI';
+import { SkillProgression } from '../combat/SkillProgression';
+import { SkillRewardUI } from '../ui/SkillRewardUI';
 import type { EquipmentSlot } from '../loot/ExpeditionLoot';
 
 const WORLD_WIDTH = 2304;
@@ -74,6 +76,8 @@ export class DungeonScene extends Phaser.Scene {
   private extractionUi!: ExtractionUI;
   private interactionDock!: InteractionDock;
   private skillUi!: SkillLoadoutUI;
+  private progression!: SkillProgression;
+  private rewardUi!: SkillRewardUI;
   private extractionOverlay!: ResultOverlay;
   private lootUi!: LootUI;
   private groundVisuals = new Map<string, Phaser.GameObjects.Container>();
@@ -94,6 +98,7 @@ export class DungeonScene extends Phaser.Scene {
     this.loot = new ExpeditionLoot(this.dungeon.seed);
     this.loadout = new EquipmentLoadout(this.loot);
     this.securedStash = new SecuredStash();
+    this.progression = new SkillProgression(this.securedStash.unlockedIds);
     this.extraction = new ExtractionDirector(this.dungeon);
     this.campAvailable = true;
     this.groundVisuals.clear();
@@ -134,7 +139,7 @@ export class DungeonScene extends Phaser.Scene {
     this.cameras.main.setZoom(this.zoom);
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen) return;
+      if (this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen || this.rewardUi.isOpen) return;
       if (this.extraction.phase === 'channeling') this.cancelExtraction();
       if (pointer.event instanceof MouseEvent && pointer.event.button !== 0) return;
       const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
@@ -166,7 +171,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M05 / PR02', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M05 / PR03', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(198).setVisible(false);
     this.dungeonSeedLabel = this.add.text(14, 0, `DUNGEON SEED: ${this.dungeon.seed}`, {
@@ -196,7 +201,11 @@ export class DungeonScene extends Phaser.Scene {
     this.skillUi = new SkillLoadoutUI(this.skills,
       () => !this.health.defeated && !this.finalized && !this.lootUi.isOpen && !this.stashUi.isOpen,
       () => this.cancelExtraction(),
-      () => this.campAvailable);
+      () => this.campAvailable,
+      this.progression);
+    this.rewardUi = new SkillRewardUI(this.progression,
+      () => !this.health.defeated && !this.finalized && !this.lootUi.isOpen && !this.stashUi.isOpen && !this.skillUi.isOpen,
+      () => this.cancelExtraction());
     this.extractionUi = new ExtractionUI(id => this.startExtraction(id), () => this.cancelExtraction());
     this.interactionDock = new InteractionDock(() => this.cancelExtraction());
     this.interactionDock.refresh(false);
@@ -212,6 +221,7 @@ export class DungeonScene extends Phaser.Scene {
     const extractionUi = this.extractionUi;
     const interactionDock = this.interactionDock;
     const skillUi = this.skillUi;
+    const rewardUi = this.rewardUi;
     const extractionOverlay = this.extractionOverlay;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       defeatOverlay.destroy();
@@ -223,6 +233,7 @@ export class DungeonScene extends Phaser.Scene {
       extractionUi.destroy();
       interactionDock.destroy();
       skillUi.destroy();
+      rewardUi.destroy();
       extractionOverlay.destroy();
     });
     this.debugButton = this.add.text(0, 8, 'DEBUG: OFF', {fontFamily:'Arial, sans-serif',fontSize:'14px',color:'#e3c99c',backgroundColor:'#243136',padding:{x:10,y:8}}).setScrollFactor(0).setDepth(110).setInteractive();
@@ -341,6 +352,8 @@ export class DungeonScene extends Phaser.Scene {
       this.recalculateEquipment();
       this.showCombatText(this.movement.position,
         `EMBER EDGE · +${reward.damageBonus} DAMAGE`, '#f9cc8d');
+      this.progression.offer('cache');
+      this.rewardUi.refresh();
     } else {
       const healed = this.health.heal(reward.healAmount);
       this.healthLabel.setText(`HP: ${this.health.hp} / ${this.health.maxHp}`);
@@ -545,7 +558,7 @@ export class DungeonScene extends Phaser.Scene {
         (item): item is NonNullable<typeof item> => item !== null,
       ),
     ];
-    const result = this.securedStash.secureExpedition(items);
+    const result = this.securedStash.secureExpedition(items, this.progression.pendingUnlocks);
     if (!result.ok) {
       const message = result.reason === 'storage-full'
         ? 'Stash full: no items saved. Gear remains in this run.'
@@ -572,6 +585,7 @@ export class DungeonScene extends Phaser.Scene {
     this.interactionDock.hideForResult();
     this.stashUi.hideForResult();
     this.skillUi.hideForResult();
+    this.rewardUi.hideForResult();
     this.lootUi.hideForResult();
     this.movement.stop();
     this.waypoints = [];
@@ -666,6 +680,8 @@ export class DungeonScene extends Phaser.Scene {
     document.documentElement.dataset.ashenStashCount = String(this.securedStash.count);
     document.documentElement.dataset.ashenStashStatus = this.securedStash.status;
     document.documentElement.dataset.ashenCampOpen = String(this.campAvailable);
+    document.documentElement.dataset.ashenPendingUnlocks = String(this.progression.pendingUnlocks.length);
+    document.documentElement.dataset.ashenSecuredUnlocks = String(this.progression.secured.length);
     document.documentElement.dataset.ashenExitCount = String(this.extraction.sites.length);
     document.documentElement.dataset.ashenExtractionPhase = this.extraction.phase;
     document.documentElement.dataset.ashenExtractionSite = this.extraction.site?.id ?? '';
@@ -720,8 +736,8 @@ export class DungeonScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     if (this.extraction.phase === 'channeling' &&
-        (this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen)) this.cancelExtraction();
-    if(this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen) return;
+        (this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen || this.rewardUi.isOpen)) this.cancelExtraction();
+    if(this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen || this.rewardUi.isOpen) return;
     const hpBeforeFrame = this.health.hp;
     const oldX = this.movement.position.x;
     const oldY = this.movement.position.y;
@@ -817,8 +833,11 @@ export class DungeonScene extends Phaser.Scene {
       // Defeating the Warden unlocks Finish but does not close optional
       // objectives or early extraction. Both remain until an exit is saved.
       this.lootUi.enableFinish(() => this.secureAndFinish());
+      this.progression.offer('warden');
+      this.rewardUi.refresh();
     }
     this.updateObjectiveStatus();
+    this.rewardUi.refresh();
     this.refreshOptionalPrompt();
     this.refreshLootPrompt();
     this.refreshExtractionPrompt();
@@ -827,6 +846,7 @@ export class DungeonScene extends Phaser.Scene {
       this.lootUi.hideForResult();
       this.stashUi.hideForResult();
       this.skillUi.hideForResult();
+      this.rewardUi.hideForResult();
       this.extractionUi.hide();
       this.interactionDock.hideForResult();
       this.defeatOverlay.show();
