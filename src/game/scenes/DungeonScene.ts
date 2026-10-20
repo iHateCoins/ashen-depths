@@ -28,6 +28,8 @@ import { SkillLoadoutUI } from '../ui/SkillLoadoutUI';
 import { SkillProgression, rewardSourceAtDepth } from '../combat/SkillProgression';
 import { canDescend, seedForDepth } from '../dungeon/DepthProgression';
 import { SkillRewardUI } from '../ui/SkillRewardUI';
+import { ClassSelectionUI } from '../ui/ClassSelectionUI';
+import { CHARACTER_CLASSES, type CharacterClassId } from '../character/CharacterClasses';
 import type { EquipmentSlot, LootItem } from '../loot/ExpeditionLoot';
 
 /** In-memory handoff only. Nothing here is secured without extraction. */
@@ -42,6 +44,7 @@ interface DescentTransfer {
   equipped: LootItem[];
   skills: AutoSkillSystem;
   progression: SkillProgression;
+  classId: CharacterClassId;
 }
 
 const WORLD_WIDTH = 2304;
@@ -93,6 +96,8 @@ export class DungeonScene extends Phaser.Scene {
   private skillUi!: SkillLoadoutUI;
   private progression!: SkillProgression;
   private rewardUi!: SkillRewardUI;
+  private classUi!: ClassSelectionUI;
+  private selectedClass: CharacterClassId = 'arcanist';
   private extractionOverlay!: ResultOverlay;
   private lootUi!: LootUI;
   private groundVisuals = new Map<string, Phaser.GameObjects.Container>();
@@ -134,7 +139,9 @@ export class DungeonScene extends Phaser.Scene {
       }
     }
     this.securedStash = new SecuredStash();
-    this.progression = carry?.progression ?? new SkillProgression(this.securedStash.unlockedIds);
+    this.selectedClass = carry?.classId ?? this.securedStash.preferredClass;
+    this.progression = carry?.progression ??
+      new SkillProgression(this.securedStash.unlockedIds, this.selectedClass);
     this.extraction = new ExtractionDirector(this.dungeon);
     // Only the initial entrance camp permits withdrawals and class/loadout edits.
     this.campAvailable = !carry;
@@ -144,8 +151,10 @@ export class DungeonScene extends Phaser.Scene {
     this.renderExtractionMarkers();
     // Scenes restart without rebuilding the TypeScript object; reset every run.
     this.health = new PlayerHealth();
-    this.combat = new AutoCombat();
-    this.skills = carry?.skills ?? new AutoSkillSystem();
+    const archetype = CHARACTER_CLASSES[this.selectedClass];
+    this.combat = new AutoCombat(archetype.basicRange, archetype.basicDamage,
+      archetype.basicInterval);
+    this.skills = carry?.skills ?? new AutoSkillSystem([archetype.startingSkill]);
     this.recalculateEquipment();
     if (carry) this.health.hp = Math.max(1, Math.min(this.health.maxHp, carry.hp));
     this.kills = 0;
@@ -177,7 +186,7 @@ export class DungeonScene extends Phaser.Scene {
     this.cameras.main.setZoom(this.zoom);
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen || this.rewardUi.isOpen) return;
+      if (this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen || this.rewardUi.isOpen || this.classUi.isOpen) return;
       if (this.extraction.phase === 'channeling') this.cancelExtraction();
       if (pointer.event instanceof MouseEvent && pointer.event.button !== 0) return;
       const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
@@ -209,7 +218,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.titleLabel = this.add.text(14, 3, `ASHEN DEPTHS · DEPTH ${this.depth} · M07 / PR01`, { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.titleLabel = this.add.text(14, 3, `ASHEN DEPTHS · DEPTH ${this.depth} · M07 / PR02`, { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(198).setVisible(false);
     this.dungeonSeedLabel = this.add.text(14, 0, `FLOOR SEED: ${this.dungeon.seed}`, {
@@ -244,6 +253,11 @@ export class DungeonScene extends Phaser.Scene {
       () => this.cancelExtraction(),
       () => this.campAvailable,
       this.progression);
+    this.classUi = new ClassSelectionUI(
+      () => this.selectedClass,
+      () => this.canChangeClass(),
+      id => this.changeClass(id),
+    );
     this.rewardUi = new SkillRewardUI(this.progression,
       () => !this.health.defeated && !this.finalized && !this.lootUi.isOpen && !this.stashUi.isOpen && !this.skillUi.isOpen,
       () => this.cancelExtraction());
@@ -265,6 +279,7 @@ export class DungeonScene extends Phaser.Scene {
     const interactionDock = this.interactionDock;
     const skillUi = this.skillUi;
     const rewardUi = this.rewardUi;
+    const classUi = this.classUi;
     const extractionOverlay = this.extractionOverlay;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       defeatOverlay.destroy();
@@ -277,6 +292,7 @@ export class DungeonScene extends Phaser.Scene {
       interactionDock.destroy();
       skillUi.destroy();
       rewardUi.destroy();
+      classUi.destroy();
       extractionOverlay.destroy();
     });
     this.debugButton = this.add.text(0, 8, 'DEBUG: OFF', {fontFamily:'Arial, sans-serif',fontSize:'14px',color:'#e3c99c',backgroundColor:'#243136',padding:{x:10,y:8}}).setScrollFactor(0).setDepth(110).setInteractive();
@@ -599,6 +615,32 @@ export class DungeonScene extends Phaser.Scene {
     return true;
   }
 
+  private canChangeClass(): boolean {
+    return this.depth === 1 && this.campAvailable && !this.finalized &&
+      !this.health.defeated && this.kills === 0 && this.loot.bag.length === 0 &&
+      this.loadout.equippedCount === 0 && !this.lootUi.isOpen &&
+      !this.stashUi.isOpen && !this.skillUi.isOpen && !this.rewardUi.isOpen;
+  }
+
+  private changeClass(id: CharacterClassId): boolean {
+    if (!this.canChangeClass()) return false;
+    if (id === this.selectedClass) return true;
+    if (!this.progression.setCharacterClass(id)) return false;
+    if (!this.securedStash.selectCharacterClass(id)) {
+      // No lasting selection on failed storage writes or stale tabs.
+      this.progression.setCharacterClass(this.selectedClass);
+      return false;
+    }
+    this.selectedClass = id;
+    const cls = CHARACTER_CLASSES[id];
+    this.combat = new AutoCombat(cls.basicRange, cls.basicDamage, cls.basicInterval);
+    this.skills.setEquipped([cls.startingSkill]);
+    this.recalculateEquipment();
+    this.healthLabel.setText(`HP: ${this.health.hp} / ${this.health.maxHp}`);
+    this.updateObjectiveStatus();
+    return true;
+  }
+
   private descend(): void {
     if (!canDescend(this.depth, this.roomEncounters.completed, this.health.defeated) ||
         this.finalized || this.lootUi.isOpen || this.stashUi.isOpen ||
@@ -616,6 +658,7 @@ export class DungeonScene extends Phaser.Scene {
       ),
       skills: this.skills,
       progression: this.progression,
+      classId: this.selectedClass,
     };
     this.cancelExtraction();
     this.scene.restart(transfer);
@@ -662,6 +705,7 @@ export class DungeonScene extends Phaser.Scene {
     this.stashUi.hideForResult();
     this.skillUi.hideForResult();
     this.rewardUi.hideForResult();
+    this.classUi.hideForResult();
     this.lootUi.hideForResult();
     this.movement.stop();
     this.waypoints = [];
@@ -678,7 +722,7 @@ export class DungeonScene extends Phaser.Scene {
     this.combat.bonusDamage = this.optionalObjectives.attackBonus + stats.attack;
     this.skills.bonusDamage = stats.spell;
     this.skills.bonusAttackDamage = stats.attack;
-    this.health.setMaxHp(Math.max(1, 100 + stats.health));
+    this.health.setMaxHp(Math.max(1, CHARACTER_CLASSES[this.selectedClass].health + stats.health));
   }
 
   private equipBagItem(id: string): void {
@@ -744,9 +788,10 @@ export class DungeonScene extends Phaser.Scene {
     const worn = this.loadout.stats;
     const shortObjective = this.roomEncounters.completed ? 'WARDEN DEFEATED · EXTRACT OR DESCEND'
       : this.roomEncounters.hasEnteredDepth ? 'DEFEAT THE WARDEN' : 'FIND THE DEEP CHAMBER';
-    this.objectiveLabel.setText(`DEPTH ${this.depth} · ${shortObjective}\n${alive} foes · ${localHostiles} local · ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} rooms\nBag ${this.loot.bag.length}/${this.loot.capacity} · Side ${this.optionalObjectives.claimedCount}/${this.optionalObjectives.totalCount}\nGear ${this.loadout.equippedCount}/3 · A+${this.combat.bonusDamage} · S+${worn.spell} · Armor ${worn.armor}`);
+    this.objectiveLabel.setText(`${CHARACTER_CLASSES[this.selectedClass].name.toUpperCase()} · DEPTH ${this.depth} · ${shortObjective}\n${alive} foes · ${localHostiles} local · ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} rooms\nBag ${this.loot.bag.length}/${this.loot.capacity} · Side ${this.optionalObjectives.claimedCount}/${this.optionalObjectives.totalCount}\nGear ${this.loadout.equippedCount}/3 · A+${this.combat.bonusDamage} · S+${worn.spell} · Armor ${worn.armor}`);
     document.documentElement.dataset.ashenEncounter = this.roomEncounters.completed ? 'complete' : 'explore';
     document.documentElement.dataset.ashenDepth = String(this.depth);
+    document.documentElement.dataset.ashenClass = this.selectedClass;
     document.documentElement.dataset.ashenNextDepthUnlocked = String(
       canDescend(this.depth, this.roomEncounters.completed, this.health.defeated));
     document.documentElement.dataset.ashenGuardianAlive = String(guardianAlive);
@@ -821,7 +866,8 @@ export class DungeonScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     if (this.extraction.phase === 'channeling' &&
-        (this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen || this.rewardUi.isOpen)) this.cancelExtraction();
+        (this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen ||
+         this.rewardUi.isOpen || this.classUi.isOpen)) this.cancelExtraction();
     if(this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen || this.rewardUi.isOpen) return;
     const hpBeforeFrame = this.health.hp;
     const oldX = this.movement.position.x;
