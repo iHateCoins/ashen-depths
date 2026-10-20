@@ -177,19 +177,25 @@ export function rollEnemyLoot(
   kind: EnemyKind,
   guardian: boolean,
   depth = 1,
+  elite = false,
 ): LootItem | null {
   const roll = lootHash(dungeonSeed, enemyId, 0xCAFE);
-  if (!guardian && kind === 'wretch' && roll % 10 >= 6) return null;
+  if (!guardian && !elite && (kind === 'wretch' || kind === 'skirmisher') &&
+      roll % 10 >= 6) return null;
+  // Riskier depths reward more rares without changing the Depth 1 economy.
+  // Elites always drop at least magic gear; their rarity is never lower than magic.
+  const rareChance = elite ? 55 : 13 + Math.min(20, Math.max(0,depth-1)*2);
   const rarity: ItemRarity = guardian ? 'rare' :
-    (lootHash(dungeonSeed, enemyId, 11) % 100 < 13 ? 'rare' :
-      lootHash(dungeonSeed, enemyId, 23) % 100 < 52 ? 'magic' : 'common');
+    (lootHash(dungeonSeed, enemyId, 11) % 100 < rareChance ? 'rare' :
+      elite || lootHash(dungeonSeed, enemyId, 23) % 100 < 52 ? 'magic' : 'common');
   const slots: readonly EquipmentSlot[] = ['weapon', 'armor', 'charm'];
   const slot = slots[lootHash(dungeonSeed, enemyId, 2) % slots.length];
   // Every deeper floor can provide higher item levels and eventually T3 affixes.
   // Depth 1 uses the original exact formula for deterministic save compatibility.
   const levelBonus = Math.max(0, Math.min(992, depth - 1)) * 2;
   const itemLevel = (guardian ? 8 : kind === 'brute' ? 5
-    : 2 + (lootHash(dungeonSeed, enemyId, 71) % 3)) + levelBonus;
+    : 2 + (lootHash(dungeonSeed, enemyId, 71) % 3)) +
+    levelBonus + (elite ? 1 : 0);
   // Normal enemies see starter bases; high-level bosses can reveal specialist bases.
   const eligibleBases = ITEM_BASES[slot].filter(base => base.minLevel <= itemLevel);
   const base = eligibleBases[lootHash(dungeonSeed, enemyId, 3) % eligibleBases.length];
@@ -249,10 +255,11 @@ export class ExpeditionLoot {
     kind: EnemyKind,
     guardian: boolean,
     position: Point,
+    elite = false,
   ): GroundLoot | null {
     if (this.defeated.has(enemyId)) return null;
     this.defeated.add(enemyId);
-    const item = rollEnemyLoot(this.dungeonSeed, enemyId, kind, guardian, this.depth);
+    const item = rollEnemyLoot(this.dungeonSeed, enemyId, kind, guardian, this.depth, elite);
     if (!item) return null;
     const dropped = {
       id: `ground-${++this.serial}`,
