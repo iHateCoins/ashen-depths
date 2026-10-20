@@ -547,15 +547,16 @@ export class DungeonScene extends Phaser.Scene {
     return saved;
   }
 
-  private withdrawFromStash(id: string): void {
-    if (this.health.defeated || this.finalized || !this.campAvailable || this.loot.bagFull) return;
+  private withdrawFromStash(id: string): boolean {
+    if (this.health.defeated || this.finalized || !this.campAvailable || this.loot.bagFull) return false;
     const item = this.securedStash.withdraw(id);
-    if (!item) return;
+    if (!item) return false;
     // The persistent transaction succeeds BEFORE the insecure bag is mutated.
     this.loot.bag.push(item);
     this.refreshLootPrompt();
     this.stashUi.refresh(this.campAvailable, this.loot.bagFull);
     this.updateObjectiveStatus();
+    return true;
   }
 
   private secureAndFinish(mode: 'warden' | 'early' = 'warden'): void {
