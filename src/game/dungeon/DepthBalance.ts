@@ -29,7 +29,7 @@ export function enemyStrikeDepthBonus(depth: number): number {
   return Math.min(30, (depth - 1) * 2) + Math.max(0, depth - 16);
 }
 
-export type DungeonThreat = 'Warden's Reach' | 'Deep Peril' | 'Abyssal';
+export type DungeonThreat = "Warden's Reach" | 'Deep Peril' | 'Abyssal';
 export function threatAtDepth(depth: number): DungeonThreat {
   assertDepth(depth);
   if (depth < 3) return "Warden's Reach";
