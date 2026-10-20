@@ -1,6 +1,8 @@
 import { lootHash, AFFIX_NAMES, AFFIX_POOLS, maximumAffixTier, type LootItem, type ItemAffix } from './ExpeditionLoot';
 import { isValidUnlockId, UNLOCK_CHOICES } from '../combat/SkillProgression';
 import { DEFAULT_CHARACTER_CLASS, isCharacterClassId, type CharacterClassId } from '../character/CharacterClasses';
+import { clonePassiveLedger, validPassiveDepth, validPassiveLedger,
+  type PassiveMilestoneLedger } from '../character/PassiveMilestones';
 
 export const STASH_STORAGE_KEY = 'ashen-depths-stash-v1';
 export const STASH_CAPACITY = 500;
@@ -24,6 +26,8 @@ interface StashSnapshot {
   forgeEmbers?: number;
   /** Optional until M07; all old saves default to the original Arcanist. */
   preferredClass?: CharacterClassId;
+  /** Optional for pre-M07 saves. Each class secures each even Warden only once. */
+  passiveMilestones?: PassiveMilestoneLedger;
 }
 
 export type StashStatus = 'ready' | 'unavailable' | 'corrupt';
@@ -77,6 +81,7 @@ function parseSnapshot(raw: string): StashSnapshot | null {
         !Array.isArray(data.items) || data.items.length > STASH_CAPACITY ||
         !data.items.every(validItem) ||
         (data.preferredClass !== undefined && !isCharacterClassId(data.preferredClass)) ||
+        (data.passiveMilestones !== undefined && !validPassiveLedger(data.passiveMilestones)) ||
         (data.forgeEmbers !== undefined && (!Number.isSafeInteger(data.forgeEmbers) ||
           data.forgeEmbers < 0 || data.forgeEmbers > MAX_FORGE_EMBERS)) ||
         (data.unlocks !== undefined && (!Array.isArray(data.unlocks) ||
@@ -147,6 +152,15 @@ export class SecuredStash {
   get unlockedIds(): readonly string[] { return [...(this.data.unlocks ?? [])]; }
   get forgeEmbers(): number { return this.data.forgeEmbers ?? 0; }
   get spendableForgeEmbers(): number { return this.spendableEmbers; }
+  get passiveMilestones(): PassiveMilestoneLedger {
+    return clonePassiveLedger(this.data.passiveMilestones ?? {});
+  }
+  passivePointsFor(classId: CharacterClassId): number {
+    return this.data.passiveMilestones?.[classId]?.length ?? 0;
+  }
+  passiveDepthsFor(classId: CharacterClassId): readonly number[] {
+    return [...(this.data.passiveMilestones?.[classId] ?? [])];
+  }
   get preferredClass(): CharacterClassId {
     return this.data.preferredClass ?? DEFAULT_CHARACTER_CLASS;
   }
@@ -165,6 +179,7 @@ export class SecuredStash {
   secureExpedition(
     items: readonly LootItem[], unlocks: readonly string[] = [],
     forgeEmbers = 0,
+    passives?: { classId: CharacterClassId; depths: readonly number[] },
   ): StashOutcome {
     if (this.state !== 'ready') return this.failure();
     if (!items.every(validItem) || new Set(items.map(item => item.id)).size !== items.length) {
@@ -175,6 +190,24 @@ export class SecuredStash {
     }
     if (!Number.isSafeInteger(forgeEmbers) || forgeEmbers < 0 ||
         this.forgeEmbers + forgeEmbers > MAX_FORGE_EMBERS) {
+      return { ok: false, saved: 0, reason: 'invalid-items' };
+    }
+    // Validate before the one atomic write. A class can only claim the
+    // Warden milestones it has not previously secured on this device.
+    if (passives && (
+      !isCharacterClassId(passives.classId) || !Array.isArray(passives.depths) ||
+      passives.depths.some(depth => !validPassiveDepth(depth)) ||
+      new Set(passives.depths).size !== passives.depths.length ||
+      passives.depths.some(depth =>
+        (this.data.passiveMilestones?.[passives.classId] ?? []).includes(depth))
+    )) return { ok: false, saved: 0, reason: 'invalid-items' };
+    const ledger = clonePassiveLedger(this.data.passiveMilestones ?? {});
+    if (passives?.depths.length) {
+      ledger[passives.classId] = [
+        ...(ledger[passives.classId] ?? []), ...passives.depths,
+      ].sort((a,b) => a-b);
+    }
+    if (!validPassiveLedger(ledger)) {
       return { ok: false, saved: 0, reason: 'invalid-items' };
     }
     if (this.data.items.length + items.length > STASH_CAPACITY) {
@@ -198,6 +231,8 @@ export class SecuredStash {
       unlocks: [...new Set([...(this.data.unlocks ?? []), ...unlocks])],
       forgeEmbers: this.forgeEmbers + forgeEmbers,
       ...(this.data.preferredClass ? { preferredClass: this.data.preferredClass } : {}),
+      ...(Object.keys(ledger).length || this.data.passiveMilestones !== undefined
+        ? { passiveMilestones: ledger } : {}),
     };
     if (!this.commit(next)) return this.failure();
     return { ok: true, saved: secured.length };
