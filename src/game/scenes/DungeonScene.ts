@@ -31,6 +31,7 @@ import { SkillRewardUI } from '../ui/SkillRewardUI';
 import { ClassSelectionUI } from '../ui/ClassSelectionUI';
 import { CHARACTER_CLASSES, type CharacterClassId } from '../character/CharacterClasses';
 import { PassiveMilestoneProgress } from '../character/PassiveMilestones';
+import { PassiveTreeProgress, type PassiveAllocationResult } from '../character/PassiveTrees';
 import type { EquipmentSlot, LootItem } from '../loot/ExpeditionLoot';
 
 /** In-memory handoff only. Nothing here is secured without extraction. */
@@ -101,6 +102,7 @@ export class DungeonScene extends Phaser.Scene {
   private classUi!: ClassSelectionUI;
   private selectedClass: CharacterClassId = 'arcanist';
   private passives!: PassiveMilestoneProgress;
+  private passiveTree!: PassiveTreeProgress;
   private extractionOverlay!: ResultOverlay;
   private lootUi!: LootUI;
   private groundVisuals = new Map<string, Phaser.GameObjects.Container>();
@@ -148,6 +150,9 @@ export class DungeonScene extends Phaser.Scene {
     this.passives = carry?.passives ?? new PassiveMilestoneProgress(
       this.selectedClass, this.securedStash.passiveDepthsFor(this.selectedClass),
     );
+    this.passiveTree = new PassiveTreeProgress(this.selectedClass,
+      this.securedStash.allocationsFor(this.selectedClass),
+      this.securedStash.passivePointsFor(this.selectedClass));
     this.extraction = new ExtractionDirector(this.dungeon);
     // Only the initial entrance camp permits withdrawals and class/loadout edits.
     this.campAvailable = !carry;
@@ -224,7 +229,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.titleLabel = this.add.text(14, 3, `ASHEN DEPTHS · DEPTH ${this.depth} · M07 / PR02`, { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.titleLabel = this.add.text(14, 3, `ASHEN DEPTHS · DEPTH ${this.depth} · M07 / PR04`, { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(198).setVisible(false);
     this.dungeonSeedLabel = this.add.text(14, 0, `FLOOR SEED: ${this.dungeon.seed}`, {
@@ -264,6 +269,9 @@ export class DungeonScene extends Phaser.Scene {
       () => this.canChangeClass(),
       id => this.changeClass(id),
       () => ({ banked: this.passives.bankedPoints, pending: this.passives.pendingPoints }),
+      () => ({selected:this.passiveTree.allocations,available:this.passiveTree.available,
+        canAllocate:this.canAllocatePassive()}),
+      id => this.allocatePassive(id),
     );
     this.rewardUi = new SkillRewardUI(this.progression,
       () => !this.health.defeated && !this.finalized && !this.lootUi.isOpen && !this.stashUi.isOpen && !this.skillUi.isOpen,
@@ -642,6 +650,8 @@ export class DungeonScene extends Phaser.Scene {
     if (!this.passives.selectClass(id, this.securedStash.passiveDepthsFor(id))) {
       throw new Error('Cannot load class passive milestones');
     }
+    this.passiveTree.selectClass(id, this.securedStash.allocationsFor(id),
+      this.securedStash.passivePointsFor(id));
     const cls = CHARACTER_CLASSES[id];
     this.combat = new AutoCombat(cls.basicRange, cls.basicDamage, cls.basicInterval);
     this.skills.setEquipped([cls.startingSkill]);
@@ -650,6 +660,25 @@ export class DungeonScene extends Phaser.Scene {
     this.updateObjectiveStatus();
     this.classUi.refresh();
     return true;
+  }
+
+  private canAllocatePassive(): boolean {
+    return this.depth === 1 && this.campAvailable && !this.finalized &&
+      !this.health.defeated && !this.lootUi.isOpen && !this.stashUi.isOpen &&
+      !this.skillUi.isOpen && !this.rewardUi.isOpen;
+  }
+
+  private allocatePassive(id: string): PassiveAllocationResult | 'storage-error' {
+    if (!this.canAllocatePassive()) return 'storage-error';
+    const result = this.securedStash.allocatePassiveNode(this.selectedClass,id);
+    if (result !== 'allocated') return result;
+    this.passiveTree.selectClass(this.selectedClass,
+      this.securedStash.allocationsFor(this.selectedClass),
+      this.securedStash.passivePointsFor(this.selectedClass));
+    this.recalculateEquipment();
+    this.healthLabel.setText(`HP: ${this.health.hp} / ${this.health.maxHp}`);
+    this.updateObjectiveStatus();
+    return 'allocated';
   }
 
   private descend(): void {
@@ -732,10 +761,13 @@ export class DungeonScene extends Phaser.Scene {
   private recalculateEquipment(): void {
     const stats = this.loadout.stats;
     // Ember Edge and weapon/affix attack bonuses are independent and stack.
-    this.combat.bonusDamage = this.optionalObjectives.attackBonus + stats.attack;
-    this.skills.bonusDamage = stats.spell;
-    this.skills.bonusAttackDamage = stats.attack;
-    this.health.setMaxHp(Math.max(1, CHARACTER_CLASSES[this.selectedClass].health + stats.health));
+    const passive = this.passiveTree.effects;
+    this.combat.bonusDamage = this.optionalObjectives.attackBonus + stats.attack + passive.attack;
+    this.skills.bonusDamage = stats.spell + passive.spell;
+    this.skills.bonusAttackDamage = stats.attack + passive.attack;
+    this.skills.passiveCooldownReduction = passive.cooldownReduction;
+    this.health.setMaxHp(Math.max(1,
+      CHARACTER_CLASSES[this.selectedClass].health + stats.health + passive.health));
   }
 
   private equipBagItem(id: string): void {
@@ -801,10 +833,12 @@ export class DungeonScene extends Phaser.Scene {
     const worn = this.loadout.stats;
     const shortObjective = this.roomEncounters.completed ? 'WARDEN DEFEATED · EXTRACT OR DESCEND'
       : this.roomEncounters.hasEnteredDepth ? 'DEFEAT THE WARDEN' : 'FIND THE DEEP CHAMBER';
-    this.objectiveLabel.setText(`${CHARACTER_CLASSES[this.selectedClass].name.toUpperCase()} · DEPTH ${this.depth} · ${shortObjective}\n${alive} foes · ${localHostiles} local · ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} rooms\nBag ${this.loot.bag.length}/${this.loot.capacity} · Side ${this.optionalObjectives.claimedCount}/${this.optionalObjectives.totalCount}\nGear ${this.loadout.equippedCount}/3 · A+${this.combat.bonusDamage} · S+${worn.spell} · Armor ${worn.armor}\nPassives ${this.passives.bankedPoints} secured · ${this.passives.pendingPoints} AT RISK`);
+    this.objectiveLabel.setText(`${CHARACTER_CLASSES[this.selectedClass].name.toUpperCase()} · DEPTH ${this.depth} · ${shortObjective}\n${alive} foes · ${localHostiles} local · ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} rooms\nBag ${this.loot.bag.length}/${this.loot.capacity} · Side ${this.optionalObjectives.claimedCount}/${this.optionalObjectives.totalCount}\nGear ${this.loadout.equippedCount}/3 · A+${this.combat.bonusDamage} · S+${worn.spell + this.passiveTree.effects.spell} · Armor ${worn.armor + this.passiveTree.effects.armor}\nPassives ${this.passives.bankedPoints} secured · ${this.passives.pendingPoints} AT RISK`);
     document.documentElement.dataset.ashenEncounter = this.roomEncounters.completed ? 'complete' : 'explore';
     document.documentElement.dataset.ashenDepth = String(this.depth);
     document.documentElement.dataset.ashenClass = this.selectedClass;
+    document.documentElement.dataset.ashenPassiveSpent = String(this.passiveTree.spent);
+    document.documentElement.dataset.ashenPassiveAvailable = String(this.passiveTree.available);
     document.documentElement.dataset.ashenPassiveSecured = String(this.passives.bankedPoints);
     document.documentElement.dataset.ashenPassivePending = String(this.passives.pendingPoints);
     this.classUi.updatePassiveStatus();
@@ -816,7 +850,8 @@ export class DungeonScene extends Phaser.Scene {
     document.documentElement.dataset.ashenOptionalObjectives = String(this.optionalObjectives.claimedCount);
     document.documentElement.dataset.ashenBasicDamageBonus = String(this.combat.bonusDamage);
     document.documentElement.dataset.ashenEquipmentCount = String(this.loadout.equippedCount);
-    document.documentElement.dataset.ashenArmor = String(worn.armor);
+    document.documentElement.dataset.ashenArmor =
+      String(worn.armor + this.passiveTree.effects.armor);
     document.documentElement.dataset.ashenSpellBonus = String(worn.spell);
     document.documentElement.dataset.ashenMaxHp = String(this.health.maxHp);
     document.documentElement.dataset.ashenStashCount = String(this.securedStash.count);
@@ -975,7 +1010,8 @@ export class DungeonScene extends Phaser.Scene {
         strike.hit ? 0xf26b57 : 0x89baa3,0.28).setDepth(12);
       this.tweens.add({targets:flash,alpha:0,scale:1.1,duration:240,onComplete:()=>flash.destroy()});
       const mitigatedDamage = mitigatedHitDamage(
-        strike.damage + Math.min(30, (this.depth - 1) * 2), this.loadout.stats.armor,
+        strike.damage + Math.min(30, (this.depth - 1) * 2),
+        this.loadout.stats.armor + this.passiveTree.effects.armor,
       );
       if (strike.hit && this.health.damage(mitigatedDamage)) {
         this.cameras.main.shake(110,0.002);
