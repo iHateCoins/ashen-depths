@@ -491,6 +491,9 @@ export class DungeonScene extends Phaser.Scene {
     this.dungeonSeedLabel.setPosition(left,
       Math.max(top + 210, height - 77 - safe.bottom))
       .setVisible(width >= 900 || this.debug.visible);
+    // Orientation may change without moving the character. Reformat the
+    // objective immediately rather than waiting for the next dungeon step.
+    this.updateObjectiveStatus();
   }
 
   private toggleDebug(): void {
