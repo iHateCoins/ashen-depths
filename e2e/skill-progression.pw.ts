@@ -2,6 +2,13 @@ import { test, expect, type Page } from '@playwright/test';
 
 const url = 'http://127.0.0.1:4173/ashen-depths/?seed=42';
 
+async function activate(page: Page, target: ReturnType<Page['locator']>): Promise<void> {
+  await expect(target).toBeVisible({ timeout: 12_000 });
+  await target.scrollIntoViewIfNeeded();
+  if (test.info().project.name === 'desktop') await target.click();
+  else await target.tap();
+}
+
 async function sceneState(page: Page) {
   return page.evaluate(() => {
     const scene = (window as Window & {
@@ -20,9 +27,9 @@ test('Sealed Cache discovery is at risk, retained only after extraction and usab
   await page.goto(url);
   await expect(page.locator('canvas')).toBeVisible({ timeout: 20_000 });
   await expect(page.locator('#ashen-skills-toggle')).toBeVisible();
-  await page.locator('#ashen-skills-toggle').click();
+  await activate(page, page.locator('#ashen-skills-toggle'));
   await expect(page.getByRole('button', { name: 'Equip Frost Bloom' })).toBeDisabled();
-  await page.locator('#ashen-skills-overlay').getByRole('button', { name: 'CLOSE' }).click();
+  await activate(page, page.locator('#ashen-skills-overlay').getByRole('button', { name: 'CLOSE' }));
 
   await page.evaluate(() => {
     const scene = (window as any).__ashenE2eGame.scene.getScene('DungeonScene') as any;
@@ -40,26 +47,31 @@ test('Sealed Cache discovery is at risk, retained only after extraction and usab
   await expect.poll(async () =>
     await page.locator('#ashen-optional-objective').isVisible() || await objectiveTab.isVisible(),
   { timeout: 12_000 }).toBe(true);
-  if (await objectiveTab.isVisible()) await objectiveTab.click();
+  if (await objectiveTab.isVisible()) await activate(page, objectiveTab);
   await expect(page.locator('#ashen-optional-objective')).toBeVisible();
-  await page.getByRole('button', { name: 'OPEN CACHE' }).click();
-  await expect(page.locator('#ashen-reward-toggle')).toBeVisible({ timeout: 12_000 });
-  await page.locator('#ashen-reward-toggle').click();
-  await page.getByRole('button', { name: 'Choose Frost Bloom' }).click();
+  await activate(page, page.getByRole('button', { name: 'OPEN CACHE' }));
+  // Use the same verified touch path as the Warden discovery regression.
+  // Mouse .click() on iPhone Safari can miss the native-tap reward flow.
+  await activate(page, page.locator('#ashen-reward-toggle'));
+  const rewardDialog = page.locator('#ashen-reward-overlay');
+  await expect(rewardDialog).toBeVisible({ timeout: 12_000 });
+  await expect(rewardDialog).toContainText('Sealed Cache Discovery');
+  const frostChoice = rewardDialog.locator('button[aria-label="Choose Frost Bloom"]');
+  await expect(frostChoice).toHaveCount(1);
+  await activate(page, frostChoice);
   await expect.poll(async () => (await sceneState(page)).pending).toEqual(['skill:frost-bloom']);
-  await expect(page.locator('#ashen-reward-overlay')).toBeHidden();
+  await expect(rewardDialog).toBeHidden();
 
   await page.evaluate(() => {
     const scene = (window as any).__ashenE2eGame.scene.getScene('DungeonScene') as any;
     scene.movement.stop(); scene.waypoints = [];
     scene.movement.position = { ...scene.extraction.sites[0].position };
   });
-  await expect(page.getByRole('button', { name: 'EXTRACT NOW' })).toBeVisible({ timeout: 12_000 });
-  await page.getByRole('button', { name: 'EXTRACT NOW' }).click();
+  await activate(page, page.getByRole('button', { name: 'EXTRACT NOW' }));
   await expect(page.locator('#ashen-extraction-overlay')).toBeVisible({ timeout: 15_000 });
-  await page.getByRole('button', { name: 'NEW EXPEDITION' }).click();
+  await activate(page, page.getByRole('button', { name: 'NEW EXPEDITION' }));
   await expect.poll(async () => (await sceneState(page)).secured).toContain('skill:frost-bloom');
-  await page.locator('#ashen-skills-toggle').click();
+  await activate(page, page.locator('#ashen-skills-toggle'));
   await expect(page.getByRole('button', { name: 'Equip Frost Bloom' })).toBeEnabled();
 });
 

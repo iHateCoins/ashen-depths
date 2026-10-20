@@ -1,4 +1,4 @@
-import { lootHash, type LootItem, type ItemAffix } from './ExpeditionLoot';
+import { lootHash, AFFIX_NAMES, AFFIX_POOLS, maximumAffixTier, type LootItem, type ItemAffix } from './ExpeditionLoot';
 import { isValidUnlockId, UNLOCK_CHOICES } from '../combat/SkillProgression';
 
 export const STASH_STORAGE_KEY = 'ashen-depths-stash-v1';
@@ -50,7 +50,8 @@ function validItem(value: unknown): value is LootItem {
 
   return item.affixes.every(affix =>
     affix && typeof affix === 'object' &&
-    ['sharp','sturdy','ember','vital'].includes(affix.id) &&
+    Object.prototype.hasOwnProperty.call(AFFIX_NAMES, affix.id) &&
+    (affix.tier === undefined || ([1, 2, 3].includes(affix.tier) && affix.tier <= maximumAffixTier(item.itemLevel!))) &&
     typeof affix.label === 'string' && affix.label.length <= 120 &&
     Number.isFinite(affix.value) &&
     affix.value >= (item.forged ? -10000 : 0) && affix.value <= 10000
@@ -190,10 +191,7 @@ export class SecuredStash {
         affixIndex >= original.affixes.length) return false;
     const nextItem = cloneItem(original);
     const old = nextItem.affixes[affixIndex];
-    const allowed: readonly ItemAffix['id'][] = original.slot === 'weapon'
-      ? ['sharp', 'ember', 'vital']
-      : original.slot === 'armor' ? ['sturdy', 'vital', 'ember']
-        : ['vital', 'ember', 'sharp'];
+    const allowed = AFFIX_POOLS[original.slot];
     const candidates = allowed.filter(affix =>
       !nextItem.affixes.some((other, i) => i !== affixIndex && other.id === affix));
     if (!candidates.length) return false;
@@ -209,16 +207,16 @@ export class SecuredStash {
       nextItem.forgeOutcome = 'cursed';
     } else {
       const affixId = candidates[lootHash(random, 0xA11CE) % candidates.length];
-      // Item level bounds the possible roll; rerolling never levels an item up.
-      const maxRoll = 4 + original.itemLevel * 2;
-      let value = 2 + (lootHash(random, 0xBEEF) % maxRoll);
+      // Forge keeps the item's level and follows the same level-gated affix tiers.
+      const tier = maximumAffixTier(original.itemLevel);
+      const valueRoll = lootHash(random, 0xBEEF);
+      let value = 1 + tier * 2 + (valueRoll % (4 + tier * 3));
       if (affixId === old.id && value === old.value) {
-        value = 2 + ((value - 1) % maxRoll);
+        value = 1 + tier * 2 + ((value - tier * 2) % (4 + tier * 3));
       }
-      const label = affixId === 'sharp' ? 'Attack Power'
-        : affixId === 'sturdy' ? 'Armor'
-        : affixId === 'ember' ? 'Ember Potency' : 'Maximum Health';
-      nextItem.affixes[affixIndex] = { id: affixId, label, value };
+      nextItem.affixes[affixIndex] = {
+        id: affixId, label: AFFIX_NAMES[affixId], tier, value,
+      };
       nextItem.forgeOutcome = 'reforged';
     }
     nextItem.forged = true;

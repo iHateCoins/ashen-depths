@@ -4,14 +4,14 @@ const url = 'http://127.0.0.1:4173/ashen-depths/?seed=42';
 
 async function tap(page: Page, control: Locator): Promise<void> {
   await expect(control).toBeVisible({ timeout: 10000 });
-  // The fixed stash/bag controls must not wait on browser scrolling: the
-  // document deliberately has overflow:hidden in the Phaser app.
+  // Tall item cards can push Withdraw below the visible scrollable stash
+  // panel, particularly in landscape and iPhone Safari. A raw (x,y) touch
+  // never scrolls and may silently hit a different element.
+  await control.scrollIntoViewIfNeeded();
   if (test.info().project.name === 'desktop') {
     await control.click();
   } else {
-    const box = await control.boundingBox();
-    expect(box).not.toBeNull();
-    await page.touchscreen.tap(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await control.tap(); // Performs actionability checks and targets the real button.
   }
 }
 
@@ -95,6 +95,19 @@ test('Warden finish saves carried and equipped loot across restarts and page rel
     document.documentElement.dataset.ashenEquipmentCount
   )).toBe('0');
 
+  // This is a stash persistence test, not a combat survival test. Keep
+  // newly spawned monsters out of attack range while the player handles the
+  // camp stash; otherwise the scene can enter defeat while assertions run,
+  // freezing the HUD dataset before it records a successful withdrawal.
+  await page.evaluate(() => {
+    const game = (window as any).__ashenE2eGame;
+    const scene = game.scene.getScene('DungeonScene') as any;
+    for (const enemy of scene.enemies) {
+      enemy.position = { x: -2000 - enemy.id * 30, y: -2000 };
+    }
+    scene.movement.stop();
+  });
+
   await tap(page, page.locator('#ashen-stash-toggle'));
   const vault = page.locator('#ashen-stash-overlay');
   await expect(vault).toBeVisible();
@@ -103,14 +116,25 @@ test('Warden finish saves carried and equipped loot across restarts and page rel
   const withdraw = vault.getByRole('button', { name: /^Withdraw /i }).first();
   await expect(withdraw).toBeEnabled();
   await tap(page, withdraw);
+  // Verify the persistent ownership transaction first, then the refreshed UI.
+  // A missed touch must fail at its source, not later on reload.
+  await expect.poll(() => page.evaluate(() => {
+    const raw = localStorage.getItem('ashen-depths-stash-v1');
+    return raw ? JSON.parse(raw).items.length : -1;
+  })).toBe(1);
+  await expect.poll(() => page.evaluate(() => {
+    const scene = (window as any).__ashenE2eGame.scene.getScene('DungeonScene') as any;
+    return scene.loot.bag.length;
+  })).toBe(1);
   await expect(vault.locator('.ashen-stash-item')).toHaveCount(1);
   await tap(page, vault.getByRole('button', { name: 'CLOSE' }));
-  await expect.poll(() => page.evaluate(() =>
-    document.documentElement.dataset.ashenStashCount
-  )).toBe('1');
-  await expect.poll(() => page.evaluate(() =>
-    document.documentElement.dataset.ashenBagCount
-  )).toBe('1');
+  await expect(vault).toBeHidden();
+  // Assert what the player actually sees, in addition to the transaction
+  // and live bag ownership checked above. The scene's telemetry dataset is
+  // diagnostic and can lag or pause during a modal transition.
+  await expect(page.locator('#ashen-stash-toggle')).toContainText('STASH 1');
+  await expect(page.locator('#ashen-bag-toggle')).toContainText('BAG 1');
+  expect(errors).toEqual([]);
 
   // A withdrawal is intentionally unsecured: reloading without extraction
   // cannot duplicate the item back into persistent storage.

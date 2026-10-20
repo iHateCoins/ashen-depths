@@ -4,10 +4,58 @@ import type { EnemyKind } from '../combat/EnemyAI';
 export type ItemRarity = 'common' | 'magic' | 'rare';
 export type EquipmentSlot = 'weapon' | 'armor' | 'charm';
 
+export type ItemAffixId =
+  | 'sharp' | 'sturdy' | 'ember' | 'vital'
+  | 'battlemage' | 'raider' | 'bastion' | 'spellward';
 export interface ItemAffix {
-  id: 'sharp' | 'sturdy' | 'ember' | 'vital';
+  id: ItemAffixId;
   label: string;
   value: number;
+  /** Optional for pre-M06 saves; legacy affixes implicitly have tier 1. */
+  tier?: 1 | 2 | 3;
+}
+
+/** Readable contribution per signed roll; dual-stat affixes can be cursed by the forge. */
+export function affixBonuses(affix: ItemAffix): {
+  attack: number; spell: number; armor: number; health: number;
+} {
+  const v = affix.value;
+  const half = v === 0 ? 0 : v < 0 ? -Math.max(1, Math.round(-v / 2)) : Math.max(1, Math.round(v / 2));
+  switch (affix.id) {
+    case 'sharp': return { attack:v, spell:0, armor:0, health:0 };
+    case 'ember': return { attack:0, spell:v, armor:0, health:0 };
+    case 'sturdy': return { attack:0, spell:0, armor:v, health:0 };
+    case 'vital': return { attack:0, spell:0, armor:0, health:v };
+    case 'battlemage': return { attack:v, spell:half, armor:0, health:0 };
+    case 'raider': return { attack:v, spell:0, armor:0, health:half };
+    case 'bastion': return { attack:0, spell:0, armor:half, health:v };
+    case 'spellward': return { attack:0, spell:v, armor:half, health:0 };
+  }
+}
+export const AFFIX_NAMES: Readonly<Record<ItemAffixId, string>> = {
+  sharp:'Attack Power', sturdy:'Armor', ember:'Ember Potency', vital:'Maximum Health',
+  battlemage:"Battlemage's Might", raider:"Raider's Vigor",
+  bastion:"Bastion's Resolve", spellward:"Spellward's Focus",
+};
+export const AFFIX_POOLS: Readonly<Record<EquipmentSlot, readonly ItemAffixId[]>> = {
+  weapon: ['sharp','ember','vital','battlemage','raider'],
+  armor: ['sturdy','vital','ember','bastion','spellward'],
+  charm: ['vital','ember','sharp','battlemage','spellward'],
+};
+export function affixSummary(affix: ItemAffix): string {
+  const effects = affixBonuses(affix);
+  const format = (amount:number) => `${amount >= 0 ? '+' : ''}${amount}`;
+  const stats = [
+    ['Attack', effects.attack], ['Spell', effects.spell],
+    ['Armor', effects.armor], ['Health', effects.health],
+  ] as const;
+  const outcome = stats.filter(([, amount]) => amount !== 0)
+    .map(([name, amount]) => `${format(amount)} ${name}`).join(' · ');
+  return `${affix.label}${affix.tier ? ' · T' + affix.tier : ''}: ${outcome}`;
+}
+/** Affix tier is capped by item level; early Warden gear can access tier 2. */
+export function maximumAffixTier(itemLevel: number): 1 | 2 | 3 {
+  return itemLevel >= 17 ? 3 : itemLevel >= 8 ? 2 : 1;
 }
 export type ForgeOutcome = 'reforged' | 'erased' | 'cursed';
 export interface LootItem {
@@ -75,19 +123,21 @@ export function rollEnemyLoot(
   const baseNames = BASES[slot];
   const baseName = baseNames[lootHash(dungeonSeed, enemyId, 3) % baseNames.length];
   const affixCount = rarity === 'rare' ? 2 : rarity === 'magic' ? 1 : 0;
-  const available: ItemAffix['id'][] = slot === 'weapon'
-    ? ['sharp', 'ember', 'vital']
-    : slot === 'armor' ? ['sturdy', 'vital', 'ember'] : ['vital', 'ember', 'sharp'];
+  const itemLevel = guardian ? 8 : kind === 'brute' ? 5 : 2 + (lootHash(dungeonSeed, enemyId, 71) % 3);
+  const available = [...AFFIX_POOLS[slot]];
   const affixes: ItemAffix[] = [];
   for (let index = 0; index < affixCount; index++) {
     const selection = lootHash(dungeonSeed, enemyId, 50 + index) % available.length;
     const id = available.splice(selection, 1)[0];
-    const value = 2 + (lootHash(dungeonSeed, enemyId, 80 + index) % (guardian ? 10 : 7));
-    const label = id === 'sharp' ? 'Attack Power' : id === 'sturdy' ? 'Armor' :
-      id === 'vital' ? 'Maximum Health' : 'Ember Potency';
-    affixes.push({ id, label, value });
+    const maxTier = maximumAffixTier(itemLevel);
+    const tier: 1 | 2 | 3 = maxTier === 1 ? 1
+      : (lootHash(dungeonSeed, enemyId, 110 + index) % 100 < (guardian ? 75 : 45)
+        ? maxTier : 1);
+    // Level-gated, deterministic rolling. A tier label also makes close upgrades legible.
+    const value = 1 + tier * 2 +
+      (lootHash(dungeonSeed, enemyId, 80 + index) % (4 + tier * 3));
+    affixes.push({ id, label: AFFIX_NAMES[id], value, tier });
   }
-  const itemLevel = guardian ? 8 : kind === 'brute' ? 5 : 2 + (lootHash(dungeonSeed, enemyId, 71) % 3);
   return {
     id: `item-${dungeonSeed >>> 0}-${enemyId}`,
     baseName,

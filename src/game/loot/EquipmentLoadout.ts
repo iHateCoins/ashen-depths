@@ -1,4 +1,4 @@
-import type { EquipmentSlot, ExpeditionLoot, LootItem } from './ExpeditionLoot';
+import { affixBonuses, type EquipmentSlot, type ExpeditionLoot, type LootItem } from './ExpeditionLoot';
 
 export interface EquipmentStats {
   /** Bonus to the 25-damage automatic basic attack. */
@@ -37,10 +37,11 @@ export function itemBonuses(item: LootItem): EquipmentStats {
   else stats.spell += 2 + Math.floor(item.itemLevel / 2);
 
   for (const affix of item.affixes) {
-    if (affix.id === 'sharp') stats.attack += affix.value;
-    else if (affix.id === 'ember') stats.spell += affix.value;
-    else if (affix.id === 'sturdy') stats.armor += affix.value;
-    else if (affix.id === 'vital') stats.health += affix.value;
+    const effects = affixBonuses(affix);
+    stats.attack += effects.attack;
+    stats.spell += effects.spell;
+    stats.armor += effects.armor;
+    stats.health += effects.health;
   }
   return stats;
 }

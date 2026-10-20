@@ -1,4 +1,4 @@
-import type { ExpeditionLoot, GroundLoot, LootItem, ItemRarity, EquipmentSlot } from '../loot/ExpeditionLoot';
+import { affixSummary, type ExpeditionLoot, type GroundLoot, type LootItem, type ItemRarity, type EquipmentSlot } from '../loot/ExpeditionLoot';
 import {
   EQUIPMENT_SLOTS, EquipmentLoadout, itemBonuses, type EquipmentStats,
 } from '../loot/EquipmentLoadout';
@@ -330,7 +330,7 @@ export class LootUI {
     details.append(createElement('span', '', statLines(bonuses)));
     if (item.affixes.length) {
       details.append(createElement('span', '', item.affixes.map(
-        modifier => `${modifier.value >= 0 ? '+' : ''}${modifier.value} ${modifier.label}`,
+        modifier => affixSummary(modifier),
       ).join(' · ')));
     }
     const previous = this.equipment.get(item.slot);
@@ -393,7 +393,7 @@ export class LootUI {
     this.nearbyTitle.textContent = nearest.item.name;
     this.nearbyTitle.style.color = RARITY_COLOR[nearest.item.rarity];
     this.nearbyDescription.textContent = `${nearest.item.rarity.toUpperCase()} ${nearest.item.slot} · ${nearest.item.affixes.length ? nearest.item.affixes.map(
-      affix => `${affix.value >= 0 ? '+' : ''}${affix.value} ${affix.label}`,
+      affix => affixSummary(affix),
     ).join(', ') : 'No modifiers'}`;
     this.pickupButton.textContent = this.loot.bagFull ? 'BAG FULL' : 'PICK UP';
     this.pickupButton.disabled = this.loot.bagFull;
