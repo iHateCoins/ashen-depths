@@ -95,6 +95,19 @@ test('Warden finish saves carried and equipped loot across restarts and page rel
     document.documentElement.dataset.ashenEquipmentCount
   )).toBe('0');
 
+  // This is a stash persistence test, not a combat survival test. Keep
+  // newly spawned monsters out of attack range while the player handles the
+  // camp stash; otherwise the scene can enter defeat while assertions run,
+  // freezing the HUD dataset before it records a successful withdrawal.
+  await page.evaluate(() => {
+    const game = (window as any).__ashenE2eGame;
+    const scene = game.scene.getScene('DungeonScene') as any;
+    for (const enemy of scene.enemies) {
+      enemy.position = { x: -2000 - enemy.id * 30, y: -2000 };
+    }
+    scene.movement.stop();
+  });
+
   await tap(page, page.locator('#ashen-stash-toggle'));
   const vault = page.locator('#ashen-stash-overlay');
   await expect(vault).toBeVisible();
@@ -108,6 +121,10 @@ test('Warden finish saves carried and equipped loot across restarts and page rel
   await expect.poll(() => page.evaluate(() => {
     const raw = localStorage.getItem('ashen-depths-stash-v1');
     return raw ? JSON.parse(raw).items.length : -1;
+  })).toBe(1);
+  await expect.poll(() => page.evaluate(() => {
+    const scene = (window as any).__ashenE2eGame.scene.getScene('DungeonScene') as any;
+    return scene.loot.bag.length;
   })).toBe(1);
   await expect(vault.locator('.ashen-stash-item')).toHaveCount(1);
   await tap(page, vault.getByRole('button', { name: 'CLOSE' }));
