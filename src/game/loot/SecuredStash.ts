@@ -1,5 +1,6 @@
 import { lootHash, AFFIX_NAMES, AFFIX_POOLS, maximumAffixTier, type LootItem, type ItemAffix } from './ExpeditionLoot';
 import { isValidUnlockId, UNLOCK_CHOICES } from '../combat/SkillProgression';
+import { DEFAULT_CHARACTER_CLASS, isCharacterClassId, type CharacterClassId } from '../character/CharacterClasses';
 
 export const STASH_STORAGE_KEY = 'ashen-depths-stash-v1';
 export const STASH_CAPACITY = 500;
@@ -21,6 +22,8 @@ interface StashSnapshot {
   unlocks?: string[];
   /** Optional since pre-M05 PR06 saves predate the forge. */
   forgeEmbers?: number;
+  /** Optional until M07; all old saves default to the original Arcanist. */
+  preferredClass?: CharacterClassId;
 }
 
 export type StashStatus = 'ready' | 'unavailable' | 'corrupt';
@@ -73,6 +76,7 @@ function parseSnapshot(raw: string): StashSnapshot | null {
         !Number.isSafeInteger(data.completed) || data.completed! < 0 ||
         !Array.isArray(data.items) || data.items.length > STASH_CAPACITY ||
         !data.items.every(validItem) ||
+        (data.preferredClass !== undefined && !isCharacterClassId(data.preferredClass)) ||
         (data.forgeEmbers !== undefined && (!Number.isSafeInteger(data.forgeEmbers) ||
           data.forgeEmbers < 0 || data.forgeEmbers > MAX_FORGE_EMBERS)) ||
         (data.unlocks !== undefined && (!Array.isArray(data.unlocks) ||
@@ -143,6 +147,19 @@ export class SecuredStash {
   get unlockedIds(): readonly string[] { return [...(this.data.unlocks ?? [])]; }
   get forgeEmbers(): number { return this.data.forgeEmbers ?? 0; }
   get spendableForgeEmbers(): number { return this.spendableEmbers; }
+  get preferredClass(): CharacterClassId {
+    return this.data.preferredClass ?? DEFAULT_CHARACTER_CLASS;
+  }
+
+  /** Preference, not an earned reward: change only at the initial camp.
+   * A one-write compare-and-set preserves the complete schema-1 stash.
+   */
+  selectCharacterClass(id: CharacterClassId): boolean {
+    if (this.state !== 'ready' || !isCharacterClassId(id)) return false;
+    if (this.data.preferredClass === id) return true;
+    return this.commit({ ...this.data, revision: this.data.revision + 1,
+      preferredClass: id });
+  }
 
   /** A successful Warden exit secures carried AND worn gear. */
   secureExpedition(
@@ -180,6 +197,7 @@ export class SecuredStash {
       items: [...this.data.items, ...secured],
       unlocks: [...new Set([...(this.data.unlocks ?? []), ...unlocks])],
       forgeEmbers: this.forgeEmbers + forgeEmbers,
+      ...(this.data.preferredClass ? { preferredClass: this.data.preferredClass } : {}),
     };
     if (!this.commit(next)) return this.failure();
     return { ok: true, saved: secured.length };
