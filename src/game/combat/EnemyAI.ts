@@ -3,7 +3,7 @@ import type { Enemy } from './AutoCombat';
 import { NavigationGrid } from '../navigation/Grid';
 import { findPath } from '../navigation/Pathfinder';
 
-export type EnemyKind = 'wretch' | 'brute';
+export type EnemyKind = 'wretch' | 'brute' | 'skirmisher';
 export type EnemyPhase = 'chase' | 'windup' | 'recovery';
 
 export interface EnemyArchetype {
@@ -29,10 +29,18 @@ export const ENEMY_ARCHETYPES: Readonly<Record<EnemyKind, Readonly<EnemyArchetyp
     attackRange: 85, attackRadius: 75, windupSeconds: 1.05,
     recoverySeconds: 1.6, attackDamage: 22,
   },
+  /** Deeper-floor flanker: short telegraph and fast chase, but fragile. */
+  skirmisher: {
+    hp: 85, speed: 125, detectionRange: 340, disengageRange: 585,
+    attackRange: 52, attackRadius: 39, windupSeconds: 0.42,
+    recoverySeconds: 0.85, attackDamage: 11,
+  },
 };
 
 export interface EnemyAgent extends Enemy {
   kind: EnemyKind;
+  /** Overrides for seeded Warden variants and elite enemies. */
+  profile?: Readonly<EnemyArchetype>;
   aggro: boolean;
   phase: EnemyPhase;
   phaseRemaining: number;
@@ -51,9 +59,14 @@ export interface EnemyStrike {
   hit: boolean;
 }
 
-export function createEnemyAgent(enemy: Enemy, kind: EnemyKind = 'wretch'): EnemyAgent {
+export function createEnemyAgent(
+  enemy: Enemy, kind: EnemyKind = 'wretch',
+  profile?: Readonly<EnemyArchetype>,
+): EnemyAgent {
   return {
-    ...enemy, position: { ...enemy.position }, kind, aggro: false,
+    ...enemy, position: { ...enemy.position }, kind,
+    ...(profile ? { profile: { ...profile } } : {}),
+    aggro: false,
     phase: 'chase', phaseRemaining: 0, attackTarget: null,
     path: [], repathTimer: 0,
   };
@@ -90,7 +103,7 @@ export function updateEnemyAgents(
       continue;
     }
 
-    const stats = ENEMY_ARCHETYPES[enemy.kind];
+    const stats = enemy.profile ?? ENEMY_ARCHETYPES[enemy.kind];
     const distance = Math.hypot(player.x - enemy.position.x, player.y - enemy.position.y);
 
     if (distance < stats.detectionRange) enemy.aggro = true;

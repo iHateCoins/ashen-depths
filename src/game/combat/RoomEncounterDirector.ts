@@ -2,12 +2,16 @@ import type { Point } from '../movement/MovementController';
 import type { NavigationGrid, Cell } from '../navigation/Grid';
 import type { DungeonLayout, DungeonRoom } from '../dungeon/DungeonGenerator';
 import type { EnemyKind } from './EnemyAI';
+import { lootHash } from '../loot/ExpeditionLoot';
+import { wardenForDepth, type WardenVariant } from './DepthEncounters';
 
 export interface RoomEnemyPlacement {
   id: number;
   roomId: number;
   kind: EnemyKind;
   guardian: boolean;
+  elite?: true;
+  wardenVariant?: WardenVariant;
   maxHp: number;
   position: Point;
 }
@@ -17,7 +21,9 @@ export interface RoomEnemyPlacement {
  * when a player clears or enters a room. Rooms and hallways stay seamless.
  * Seeded offsets make every placement reproducible and navigable.
  */
-export function planRoomEncounters(layout: DungeonLayout, grid: NavigationGrid): RoomEnemyPlacement[] {
+export function planRoomEncounters(
+  layout: DungeonLayout, grid: NavigationGrid, floorDepth = 1,
+): RoomEnemyPlacement[] {
   const entrance = layout.rooms.find(room => room.role === 'entrance');
   const depth = layout.rooms.find(room => room.role === 'depth');
   if (!entrance || !depth) throw new Error('Missing entrance or deep chamber');
@@ -43,6 +49,15 @@ export function planRoomEncounters(layout: DungeonLayout, grid: NavigationGrid):
       : room.role === 'cache' || remote
         ? ['brute', ...Array.from({ length: count - 1 }, () => 'wretch' as const)]
         : Array.from({ length: count }, () => 'wretch' as const);
+
+    // Depth 1 keeps its original populations exactly. Deeper floors may
+    // replace one wretch with a quick skirmisher and promote a seeded elite.
+    if (floorDepth >= 3 && (room.role === 'cache' || remote || room.role === 'depth')) {
+      const lastWretch = kinds.lastIndexOf('wretch');
+      if (lastWretch >= 0) kinds[lastWretch] = 'skirmisher';
+    }
+    const eliteRoom = floorDepth >= 3 && room.role !== 'depth' &&
+      lootHash(layout.seed,room.id,0xE11E) % 3 === 0;
 
     const rotation = (layout.seed + room.id * 11) % (offsets.length - 1);
     const candidates = [offsets[0], ...Array.from(
@@ -72,7 +87,10 @@ export function planRoomEncounters(layout: DungeonLayout, grid: NavigationGrid):
         roomId: room.id,
         kind,
         guardian,
-        maxHp: guardian ? 300 : kind === 'brute' ? 220 : 100,
+        ...(eliteRoom && i === 0 ? { elite: true as const } : {}),
+        ...(guardian && floorDepth > 1 ? {wardenVariant:wardenForDepth(floorDepth)} : {}),
+        maxHp: guardian ? 300 : kind === 'brute' ? 220
+          : kind === 'skirmisher' ? 85 : 100,
         position,
       });
       candidates.splice(candidates.indexOf(offset), 1);
@@ -92,8 +110,8 @@ export class RoomEncounterDirector {
   completed = false;
   hasEnteredDepth = false;
 
-  constructor(readonly dungeon: DungeonLayout, grid: NavigationGrid) {
-    this.placements = planRoomEncounters(dungeon, grid);
+  constructor(readonly dungeon: DungeonLayout, grid: NavigationGrid, depth = 1) {
+    this.placements = planRoomEncounters(dungeon, grid, depth);
     this.guardianId = this.placements.find(spawn => spawn.guardian)!.id;
     this.depthRoomId = dungeon.rooms.find(room => room.role === 'depth')!.id;
   }
