@@ -47,6 +47,14 @@ test('only a defeated Warden unlocks descent, which retains risky loot, HP and d
   await expect(descend).toBeVisible();
   await expect(descend).toContainText('DEPTH 2');
   await expect(descend).toContainText('KEEP LOOT AT RISK');
+  // Regression for PR34's initial cross-browser failure: a visible button
+  // must actually receive pointer events, not hand them to the Phaser canvas.
+  await expect.poll(async () => descend.evaluate(button => {
+    const box = button.getBoundingClientRect();
+    const atCenter = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return getComputedStyle(button).pointerEvents === 'auto' &&
+      (atCenter === button || button.contains(atCenter));
+  })).toBe(true);
   // Claim the depth-one Warden Ember; it must not yet exist in secure storage.
   await tap(page,page.locator('#ashen-reward-toggle'));
   await tap(page,page.locator('#ashen-reward-overlay').getByRole('button',{name:'Choose Forge Ember'}));
