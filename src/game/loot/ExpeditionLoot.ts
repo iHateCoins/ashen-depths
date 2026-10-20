@@ -176,6 +176,7 @@ export function rollEnemyLoot(
   enemyId: number,
   kind: EnemyKind,
   guardian: boolean,
+  depth = 1,
 ): LootItem | null {
   const roll = lootHash(dungeonSeed, enemyId, 0xCAFE);
   if (!guardian && kind === 'wretch' && roll % 10 >= 6) return null;
@@ -184,7 +185,11 @@ export function rollEnemyLoot(
       lootHash(dungeonSeed, enemyId, 23) % 100 < 52 ? 'magic' : 'common');
   const slots: readonly EquipmentSlot[] = ['weapon', 'armor', 'charm'];
   const slot = slots[lootHash(dungeonSeed, enemyId, 2) % slots.length];
-  const itemLevel = guardian ? 8 : kind === 'brute' ? 5 : 2 + (lootHash(dungeonSeed, enemyId, 71) % 3);
+  // Every deeper floor can provide higher item levels and eventually T3 affixes.
+  // Depth 1 uses the original exact formula for deterministic save compatibility.
+  const levelBonus = Math.max(0, Math.min(992, depth - 1)) * 2;
+  const itemLevel = (guardian ? 8 : kind === 'brute' ? 5
+    : 2 + (lootHash(dungeonSeed, enemyId, 71) % 3)) + levelBonus;
   // Normal enemies see starter bases; high-level bosses can reveal specialist bases.
   const eligibleBases = ITEM_BASES[slot].filter(base => base.minLevel <= itemLevel);
   const base = eligibleBases[lootHash(dungeonSeed, enemyId, 3) % eligibleBases.length];
@@ -226,7 +231,11 @@ export class ExpeditionLoot {
   constructor(
     readonly dungeonSeed: number,
     readonly capacity = EXPEDITION_BAG_CAPACITY,
+    readonly depth = 1,
   ) {
+    if (!Number.isInteger(depth) || depth < 1 || depth > 497) {
+      throw new Error('Expedition depth must be between 1 and 497');
+    }
     if (!Number.isInteger(capacity) || capacity <= 0) {
       throw new Error('Expedition bag capacity must be a positive integer');
     }
@@ -243,7 +252,7 @@ export class ExpeditionLoot {
   ): GroundLoot | null {
     if (this.defeated.has(enemyId)) return null;
     this.defeated.add(enemyId);
-    const item = rollEnemyLoot(this.dungeonSeed, enemyId, kind, guardian);
+    const item = rollEnemyLoot(this.dungeonSeed, enemyId, kind, guardian, this.depth);
     if (!item) return null;
     const dropped = {
       id: `ground-${++this.serial}`,
