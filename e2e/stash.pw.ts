@@ -128,12 +128,13 @@ test('Warden finish saves carried and equipped loot across restarts and page rel
   })).toBe(1);
   await expect(vault.locator('.ashen-stash-item')).toHaveCount(1);
   await tap(page, vault.getByRole('button', { name: 'CLOSE' }));
-  await expect.poll(() => page.evaluate(() =>
-    document.documentElement.dataset.ashenStashCount
-  )).toBe('1');
-  await expect.poll(() => page.evaluate(() =>
-    document.documentElement.dataset.ashenBagCount
-  )).toBe('1');
+  await expect(vault).toBeHidden();
+  // Assert what the player actually sees, in addition to the transaction
+  // and live bag ownership checked above. The scene's telemetry dataset is
+  // diagnostic and can lag or pause during a modal transition.
+  await expect(page.locator('#ashen-stash-toggle')).toContainText('STASH 1');
+  await expect(page.locator('#ashen-bag-toggle')).toContainText('BAG 1');
+  expect(errors).toEqual([]);
 
   // A withdrawal is intentionally unsecured: reloading without extraction
   // cannot duplicate the item back into persistent storage.
