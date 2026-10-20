@@ -54,7 +54,7 @@ export class ExtractionUI {
     this.notice = notice;
   }
 
-  show(site: ExtractionSite | null, phase: ExtractionPhase, remaining: number, enabled = true): void {
+  show(site: ExtractionSite | null, phase: ExtractionPhase, remaining: number, enabled = true, unclaimed = 0): void {
     if (!site) {
       this.hide();
       return;
@@ -63,20 +63,26 @@ export class ExtractionUI {
     this.siteId = site.id;
     this.phase = phase;
     this.enabled = enabled;
-    const signature = [site.id, phase, remaining.toFixed(1), enabled].join(':');
+    const signature = [site.id, phase, remaining.toFixed(1), enabled, unclaimed].join(':');
     if (signature === this.signature) return;
     this.signature = signature;
     this.heading.textContent = site.label;
     this.detail.textContent = phase === 'channeling'
       ? `Channeling escape: ${remaining.toFixed(1)}s · stay near the stone and avoid damage.`
       : 'Leave now with worn and carried gear, or explore deeper for more loot.';
-    this.action.textContent = phase === 'channeling' ? 'CANCEL ESCAPE' : 'EXTRACT NOW';
+    this.action.textContent = phase === 'channeling' ? 'CANCEL ESCAPE'
+      : unclaimed > 0 ? `EXTRACT NOW · ${unclaimed} REWARD${unclaimed === 1 ? '' : 'S'} LOST`
+      : 'EXTRACT NOW';
+    this.action.setAttribute('aria-label', phase === 'channeling' ? 'CANCEL ESCAPE' : 'EXTRACT NOW');
     this.action.disabled = !enabled;
-    this.notice.textContent = this.errorMessage || (enabled
+    const warning = unclaimed > 0
+      ? ` UNCLAIMED: ${unclaimed} discovery reward${unclaimed === 1 ? '' : 's'} will be forfeited. Use CLAIM REWARDS first.`
+      : '';
+    this.notice.textContent = (this.errorMessage || (enabled
       ? phase === 'channeling'
         ? 'Taking damage, moving away, or opening your bag interrupts extraction.'
         : `Hold the waystone for ${EXTRACTION_SECONDS.toFixed(1)}s. No room clearing required.`
-      : 'Extraction is unavailable after the Warden has fallen.');
+      : 'Extraction is unavailable after the Warden has fallen.')) + warning;
   }
 
   showError(message: string): void {
