@@ -28,6 +28,7 @@ import { InteractionDock } from '../ui/InteractionDock';
 import { SkillLoadoutUI } from '../ui/SkillLoadoutUI';
 import { SkillProgression, rewardSourceAtDepth } from '../combat/SkillProgression';
 import { canDescend, seedForDepth } from '../dungeon/DepthProgression';
+import { enemyHealthMultiplier, enemyStrikeDepthBonus, threatAtDepth } from '../dungeon/DepthBalance';
 import { SkillRewardUI } from '../ui/SkillRewardUI';
 import { ClassSelectionUI } from '../ui/ClassSelectionUI';
 import { CHARACTER_CLASSES, type CharacterClassId } from '../character/CharacterClasses';
@@ -230,7 +231,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.titleLabel = this.add.text(14, 3, `ASHEN DEPTHS · DEPTH ${this.depth} · M07 / PR05`, { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.titleLabel = this.add.text(14, 3, `ASHEN DEPTHS · DEPTH ${this.depth} · M07 / PR06`, { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(198).setVisible(false);
     this.dungeonSeedLabel = this.add.text(14, 0, `FLOOR SEED: ${this.dungeon.seed}`, {
@@ -516,7 +517,7 @@ export class DungeonScene extends Phaser.Scene {
     for (const spawn of this.roomEncounters.placements) {
       const variant = spawn.guardian ?
         WARDEN_VARIANTS[spawn.wardenVariant ?? 'warden'] : null;
-      const healthScale = (1 + Math.min(this.depth - 1, 15) * 0.18) *
+      const healthScale = enemyHealthMultiplier(this.depth) *
         (spawn.elite ? 1.5 : variant?.healthMultiplier ?? 1);
       const maxHp = Math.round(spawn.maxHp * healthScale);
       const enemy = createEnemyAgent({
@@ -852,6 +853,9 @@ export class DungeonScene extends Phaser.Scene {
     this.objectiveLabel.setText(`${CHARACTER_CLASSES[this.selectedClass].name.toUpperCase()} · DEPTH ${this.depth} · ${shortObjective}\n${alive} foes · ${localHostiles} local · ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} rooms\nBag ${this.loot.bag.length}/${this.loot.capacity} · Side ${this.optionalObjectives.claimedCount}/${this.optionalObjectives.totalCount}\nGear ${this.loadout.equippedCount}/3 · A+${this.combat.bonusDamage} · S+${worn.spell + this.passiveTree.effects.spell} · Armor ${worn.armor + this.passiveTree.effects.armor}\nPassives ${this.passives.bankedPoints} secured · ${this.passives.pendingPoints} AT RISK`);
     document.documentElement.dataset.ashenEncounter = this.roomEncounters.completed ? 'complete' : 'explore';
     document.documentElement.dataset.ashenDepth = String(this.depth);
+    document.documentElement.dataset.ashenThreatTier = threatAtDepth(this.depth);
+    document.documentElement.dataset.ashenStrikeBonus =
+      String(enemyStrikeDepthBonus(this.depth));
     document.documentElement.dataset.ashenWardenVariant = wardenForDepth(this.depth);
     document.documentElement.dataset.ashenEliteCount =
       String(this.roomEncounters.placements.filter(spawn => spawn.elite).length);
@@ -1032,7 +1036,7 @@ export class DungeonScene extends Phaser.Scene {
         strike.hit ? 0xf26b57 : 0x89baa3,0.28).setDepth(12);
       this.tweens.add({targets:flash,alpha:0,scale:1.1,duration:240,onComplete:()=>flash.destroy()});
       const mitigatedDamage = mitigatedHitDamage(
-        strike.damage + Math.min(30, (this.depth - 1) * 2),
+        strike.damage + enemyStrikeDepthBonus(this.depth),
         this.loadout.stats.armor + this.passiveTree.effects.armor,
       );
       if (strike.hit && this.health.damage(mitigatedDamage)) {
