@@ -74,7 +74,7 @@ export class SkillRewardUI {
   private render(): void {
     this.source = this.progression.choicesRemaining[0] ?? null;
     if (!this.source) { this.hide(); this.refresh(); return; }
-    this.heading.textContent = this.source === 'cache' ? 'Sealed Cache Discovery' : 'Warden Discovery';
+    this.heading.textContent = this.source.startsWith('cache') ? 'Sealed Cache Discovery' : 'Warden Discovery';
     this.count.textContent = `${this.progression.choicesRemaining.length} reward choice(s) · ${this.progression.pendingUnlocks.length} unsecured unlocks · ${this.progression.pendingForgeEmbers} unsecured Forge Embers`;
     this.list.replaceChildren();
     for (const choice of this.progression.rewardChoices) {
