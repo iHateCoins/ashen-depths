@@ -1,4 +1,5 @@
-import { ACTIVE_SKILLS, CINDER_BURST, SKILL_SUPPORTS, skillPatternLabel } from './AutoSkillSystem';
+import { ACTIVE_SKILLS, SKILL_SUPPORTS, skillPatternLabel } from './AutoSkillSystem';
+import { CHARACTER_CLASSES, DEFAULT_CHARACTER_CLASS, type CharacterClassId } from '../character/CharacterClasses';
 
 export type RewardSource = 'cache' | 'warden' | `cache:${number}` | `warden:${number}`;
 
@@ -18,7 +19,7 @@ export interface UnlockChoice {
 }
 
 export const UNLOCK_CHOICES: readonly UnlockChoice[] = [
-  ...ACTIVE_SKILLS.filter(skill => skill.id !== CINDER_BURST.id).map(skill => ({
+  ...ACTIVE_SKILLS.map(skill => ({
     id: `skill:${skill.id}`, label: skill.name,
     description: `${skill.type.toUpperCase()} · ${skill.type === 'attack' ? 'Attack Power' : 'Spell Power'} scaling · New auto-casting skill · ${skill.damage} damage · ${skillPatternLabel(skill, skill.radius)} · ${skill.cooldownSeconds}s cooldown`,
     kind: 'skill' as const,
@@ -48,13 +49,26 @@ export const isValidUnlockId = (id: unknown): id is string =>
  */
 export class SkillProgression {
   private readonly unlocked: Set<string>;
+  private selectedClass: CharacterClassId;
+  get characterClass(): CharacterClassId { return this.selectedClass; }
+
+  /** Class changes are permitted only before any expedition rewards are earned. */
+  setCharacterClass(id: CharacterClassId): boolean {
+    if (this.chosen.size > 0 || this.pendingEmbers > 0 || this.offered.size > 0) return false;
+    this.selectedClass = id;
+    return true;
+  }
   private readonly chosen = new Set<string>();
   private pendingEmbers = 0;
   private readonly offered = new Set<RewardSource>();
   private readonly resolved = new Set<RewardSource>();
 
-  constructor(unlocked: readonly string[] = []) {
+  constructor(
+    unlocked: readonly string[] = [],
+    startingClass: CharacterClassId = DEFAULT_CHARACTER_CLASS,
+  ) {
     this.unlocked = new Set(unlocked.filter(isValidUnlockId));
+    this.selectedClass = startingClass;
   }
 
   get secured(): readonly string[] { return [...this.unlocked]; }
@@ -65,10 +79,15 @@ export class SkillProgression {
     return [...this.offered].filter(source => !this.resolved.has(source));
   }
   get availableChoices(): readonly UnlockChoice[] {
-    return UNLOCK_CHOICES.filter(item => !this.unlocked.has(item.id) && !this.chosen.has(item.id));
+    const starter = CHARACTER_CLASSES[this.selectedClass].startingSkill.id;
+    return UNLOCK_CHOICES.filter(item => item.id !== `skill:${starter}` &&
+      !this.unlocked.has(item.id) && !this.chosen.has(item.id));
   }
   get allLearned(): boolean { return this.availableChoices.length === 0 && this.chosen.size === 0; }
-  canUseSkill(id: string): boolean { return id === CINDER_BURST.id || this.unlocked.has(`skill:${id}`); }
+  canUseSkill(id: string): boolean {
+    return id === CHARACTER_CLASSES[this.selectedClass].startingSkill.id ||
+      this.unlocked.has(`skill:${id}`);
+  }
   canUseSupport(id: string): boolean { return this.unlocked.has(`support:${id}`); }
   isSecured(id: string): boolean { return this.unlocked.has(id); }
   isPending(id: string): boolean { return this.chosen.has(id); }
