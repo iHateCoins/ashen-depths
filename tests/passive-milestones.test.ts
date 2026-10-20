@@ -114,7 +114,7 @@ describe('M07 PR03 Warden-gated passive point progression',()=>{
     const cases=[
       {vanguard:[2,2]}, {arcanist:[4,2]}, {arcanist:[1]},
       {vanguard:[498]}, {vanguard:[2.5]}, {arcanist:4},
-      {warrior:[2]}, {'__proto__':[2]}, [],
+      {warrior:[2]}, Object.fromEntries([['__proto__',[2]]]), [],
     ];
     for (const ledger of cases) {
       if (ledger && Object.keys(ledger).length === 0 && !Array.isArray(ledger)) continue;
