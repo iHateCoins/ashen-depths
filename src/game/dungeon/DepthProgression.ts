@@ -17,7 +17,7 @@ export function canDescend(depth: number, wardenDefeated: boolean, defeated: boo
     depth < 497 && wardenDefeated && !defeated;
 }
 
-/** M07 PR02 will secure one point per previously unclaimed even depth Warden. */
+/** The actual Warden kill event (not depth entry) is required to earn a point. */
 export function isPassiveMilestone(depth: number, wardenDefeated: boolean): boolean {
-  return Number.isSafeInteger(depth) && depth >= 2 && depth % 2 === 0 && wardenDefeated;
+  return Number.isSafeInteger(depth) && depth >= 2 && depth <= 496 && depth % 2 === 0 && wardenDefeated;
 }
