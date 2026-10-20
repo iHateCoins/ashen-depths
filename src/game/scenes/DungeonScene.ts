@@ -33,6 +33,8 @@ import type { EquipmentSlot, LootItem } from '../loot/ExpeditionLoot';
 /** In-memory handoff only. Nothing here is secured without extraction. */
 interface DescentTransfer {
   kind: 'descend';
+  /** Phaser can reuse the last restart data when restart() has no arguments. */
+  consumed?: boolean;
   depth: number;
   expeditionSeed: number;
   hp: number;
@@ -104,12 +106,15 @@ export class DungeonScene extends Phaser.Scene {
   constructor() { super('DungeonScene'); }
 
   init(data?: DescentTransfer): void {
-    this.incoming = data?.kind === 'descend' ? data : null;
+    // ScenePlugin.restart() without new data can replay the previous payload.
+    // A descent handoff may initialize ONE floor only; it is not a saved run.
+    this.incoming = data?.kind === 'descend' && !data.consumed ? data : null;
   }
 
   create(): void {
     const carry = this.incoming;
     this.incoming = null;
+    if (carry) carry.consumed = true;
     this.cameras.main.setBackgroundColor('#10171b');
     this.depth = carry?.depth ?? 1;
     this.expeditionSeed = carry?.expeditionSeed ??
@@ -245,9 +250,11 @@ export class DungeonScene extends Phaser.Scene {
     this.extractionUi = new ExtractionUI(id => this.startExtraction(id), () => this.cancelExtraction());
     this.interactionDock = new InteractionDock(() => this.cancelExtraction());
     this.interactionDock.refresh(false);
-    this.defeatOverlay = new ResultOverlay('defeat', () => this.scene.restart());
-    this.victoryOverlay = new ResultOverlay('victory', () => this.scene.restart());
-    this.extractionOverlay = new ResultOverlay('extraction', () => this.scene.restart());
+    // Always pass a fresh-start marker for player-facing restarts. The consumed
+    // descent guard also covers a bare restart() from external scene callers.
+    this.defeatOverlay = new ResultOverlay('defeat', () => this.scene.restart({ kind: 'fresh' }));
+    this.victoryOverlay = new ResultOverlay('victory', () => this.scene.restart({ kind: 'fresh' }));
+    this.extractionOverlay = new ResultOverlay('extraction', () => this.scene.restart({ kind: 'fresh' }));
     const defeatOverlay = this.defeatOverlay;
     const victoryOverlay = this.victoryOverlay;
     const explorationView = this.explorationView;
