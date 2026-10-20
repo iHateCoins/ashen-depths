@@ -31,7 +31,15 @@ async function nextFloor(page:Page,depth:number):Promise<void> {
 }
 async function claimWardenEmber(page:Page):Promise<void> {
   await activate(page,page.locator('#ashen-reward-toggle'));
-  await activate(page,page.locator('#ashen-reward-overlay').getByRole('button',{name:'Choose Forge Ember'}));
+  const dialog = page.locator('#ashen-reward-overlay');
+  await activate(page,dialog.getByRole('button',{name:'Choose Forge Ember'}));
+  // On later floors, earlier Cache/Warden discoveries may remain unclaimed,
+  // so selecting one Ember advances to the next reward instead of dismissing
+  // the modal. Close it intentionally before tapping world/dock controls.
+  if (await dialog.isVisible()) {
+    await activate(page,dialog.getByRole('button',{name:'CLOSE'}));
+  }
+  await expect(dialog).toBeHidden();
 }
 async function readRun(page:Page):Promise<{
   depth:number;hp:number;banked:number;pending:number;bag:number;worn:number;
@@ -81,6 +89,10 @@ test('M07: four Warden-gated floors bank gear, discovery and two first-clear pas
   await defeatWarden(page);
   expect(await readRun(page)).toMatchObject({depth:4,pending:2,banked:0,embers:1});
   await claimWardenEmber(page);
+  // Unclaimed rewards are deliberately allowed, but the reward modal must
+  // be dismissed by a real Close click before the Finish button is tappable.
+  await expect(page.locator('#ashen-reward-overlay')).toBeHidden();
+  await expect(page.getByRole('button',{name:'FINISH EXPEDITION'})).toBeVisible();
   expect(await page.evaluate(()=>localStorage.getItem('ashen-depths-stash-v1'))).toBeNull();
   await activate(page,page.getByRole('button',{name:'FINISH EXPEDITION'}));
   const result=page.locator('#ashen-victory-overlay');
