@@ -264,6 +264,11 @@ export class DungeonScene extends Phaser.Scene {
       () => this.cancelExtraction(),
       () => this.campAvailable,
       this.progression);
+    this.rewardUi = new SkillRewardUI(this.progression,
+      () => !this.health.defeated && !this.finalized && !this.lootUi.isOpen && !this.stashUi.isOpen && !this.skillUi.isOpen,
+      () => this.cancelExtraction());
+    // The class UI immediately renders allocation eligibility in its
+    // constructor, so all referenced overlay instances must exist first.
     this.classUi = new ClassSelectionUI(
       () => this.selectedClass,
       () => this.canChangeClass(),
@@ -273,9 +278,6 @@ export class DungeonScene extends Phaser.Scene {
         canAllocate:this.canAllocatePassive()}),
       id => this.allocatePassive(id),
     );
-    this.rewardUi = new SkillRewardUI(this.progression,
-      () => !this.health.defeated && !this.finalized && !this.lootUi.isOpen && !this.stashUi.isOpen && !this.skillUi.isOpen,
-      () => this.cancelExtraction());
     this.extractionUi = new ExtractionUI(id => this.startExtraction(id), () => this.cancelExtraction());
     this.interactionDock = new InteractionDock(() => this.cancelExtraction());
     this.interactionDock.refresh(false);
