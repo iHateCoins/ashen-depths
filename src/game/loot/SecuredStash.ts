@@ -40,6 +40,12 @@ function validItem(value: unknown): value is LootItem {
   if (typeof item.id !== 'string' || !item.id || item.id.length > 160 ||
       typeof item.name !== 'string' || !item.name || item.name.length > 140 ||
       typeof item.baseName !== 'string' || !item.baseName || item.baseName.length > 140 ||
+      (item.baseStats !== undefined && (
+        typeof item.baseStats !== 'object' || item.baseStats === null ||
+        !(['attack', 'spell', 'armor', 'health'] as const).every(stat =>
+          Number.isSafeInteger(item.baseStats?.[stat]) &&
+          item.baseStats![stat] >= 0 && item.baseStats![stat] <= 10000)
+      )) ||
       !(['common','magic','rare'] as unknown[]).includes(item.rarity) ||
       !(['weapon','armor','charm'] as unknown[]).includes(item.slot) ||
       !Number.isInteger(item.itemLevel) || item.itemLevel! < 1 || item.itemLevel! > 1000 ||
@@ -89,7 +95,11 @@ function tryStorage(): StashStorage | null {
 }
 
 function cloneItem(item: LootItem): LootItem {
-  return { ...item, affixes: item.affixes.map(affix => ({ ...affix })) };
+  return {
+    ...item,
+    ...(item.baseStats ? { baseStats: { ...item.baseStats } } : {}),
+    affixes: item.affixes.map(affix => ({ ...affix })),
+  };
 }
 
 /**
