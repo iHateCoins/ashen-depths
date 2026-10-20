@@ -3,6 +3,8 @@ import { isValidUnlockId, UNLOCK_CHOICES } from '../combat/SkillProgression';
 import { DEFAULT_CHARACTER_CLASS, isCharacterClassId, type CharacterClassId } from '../character/CharacterClasses';
 import { clonePassiveLedger, validPassiveDepth, validPassiveLedger,
   type PassiveMilestoneLedger } from '../character/PassiveMilestones';
+import { cloneAllocations, PassiveTreeProgress, validAllocationLedger,
+  type PassiveAllocationLedger, type PassiveAllocationResult } from '../character/PassiveTrees';
 
 export const STASH_STORAGE_KEY = 'ashen-depths-stash-v1';
 export const STASH_CAPACITY = 500;
@@ -28,6 +30,8 @@ interface StashSnapshot {
   preferredClass?: CharacterClassId;
   /** Optional for pre-M07 saves. Each class secures each even Warden only once. */
   passiveMilestones?: PassiveMilestoneLedger;
+  /** Missing in pre-PR04 saves. Order records valid, paid prerequisite paths. */
+  passiveAllocations?: PassiveAllocationLedger;
 }
 
 export type StashStatus = 'ready' | 'unavailable' | 'corrupt';
@@ -82,6 +86,8 @@ function parseSnapshot(raw: string): StashSnapshot | null {
         !data.items.every(validItem) ||
         (data.preferredClass !== undefined && !isCharacterClassId(data.preferredClass)) ||
         (data.passiveMilestones !== undefined && !validPassiveLedger(data.passiveMilestones)) ||
+        (data.passiveAllocations !== undefined &&
+          !validAllocationLedger(data.passiveAllocations, data.passiveMilestones ?? {})) ||
         (data.forgeEmbers !== undefined && (!Number.isSafeInteger(data.forgeEmbers) ||
           data.forgeEmbers < 0 || data.forgeEmbers > MAX_FORGE_EMBERS)) ||
         (data.unlocks !== undefined && (!Array.isArray(data.unlocks) ||
@@ -152,6 +158,27 @@ export class SecuredStash {
   get unlockedIds(): readonly string[] { return [...(this.data.unlocks ?? [])]; }
   get forgeEmbers(): number { return this.data.forgeEmbers ?? 0; }
   get spendableForgeEmbers(): number { return this.spendableEmbers; }
+  get passiveAllocations(): PassiveAllocationLedger {
+    return cloneAllocations(this.data.passiveAllocations ?? {});
+  }
+  allocationsFor(classId: CharacterClassId): readonly string[] {
+    return [...(this.data.passiveAllocations?.[classId] ?? [])];
+  }
+  /** Returns an explicit reason so UI can distinguish cap, prerequisite and failed saves. */
+  allocatePassiveNode(classId: CharacterClassId,id: string):
+    PassiveAllocationResult | 'storage-error' {
+    if (this.state !== 'ready' || !isCharacterClassId(classId)) return 'storage-error';
+    const progress = new PassiveTreeProgress(classId, this.allocationsFor(classId),
+      this.passivePointsFor(classId));
+    const result = progress.tryAllocate(id);
+    if (result !== 'allocated') return result;
+    const allocations = cloneAllocations(this.data.passiveAllocations ?? {});
+    allocations[classId] = [...progress.allocations];
+    const next: StashSnapshot = {
+      ...this.data, revision: this.data.revision + 1, passiveAllocations: allocations,
+    };
+    return this.commit(next) ? 'allocated' : 'storage-error';
+  }
   get passiveMilestones(): PassiveMilestoneLedger {
     return clonePassiveLedger(this.data.passiveMilestones ?? {});
   }
@@ -233,6 +260,8 @@ export class SecuredStash {
       ...(this.data.preferredClass ? { preferredClass: this.data.preferredClass } : {}),
       ...(Object.keys(ledger).length || this.data.passiveMilestones !== undefined
         ? { passiveMilestones: ledger } : {}),
+      ...(this.data.passiveAllocations
+        ? { passiveAllocations: cloneAllocations(this.data.passiveAllocations) } : {}),
     };
     if (!this.commit(next)) return this.failure();
     return { ok: true, saved: secured.length };
