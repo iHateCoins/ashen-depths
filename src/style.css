@@ -613,6 +613,10 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
   font:600 13px Arial,sans-serif;
   cursor:pointer;
   touch-action:manipulation;
+  /* The interaction dock deliberately ignores pointer events outside its
+     controls. Each direct child action must opt back in or the Phaser canvas
+     beneath steals clicks and taps, even when the button looks visible. */
+  pointer-events:auto;
 }
 .ashen-interaction-dock > .ashen-descend-run[hidden]{display:none;}
 .ashen-descend-run:focus-visible{outline:3px solid #ffe7aa;outline-offset:2px;}
