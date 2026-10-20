@@ -22,7 +22,7 @@ export class StashUI {
   private readonly items: HTMLElement;
   private readonly instructions: HTMLElement;
   private readonly count: HTMLElement;
-  private readonly onWithdraw: (id: string) => void;
+  private readonly onWithdraw: (id: string) => boolean;
   private readonly onReforge: (id: string, affixIndex: number) => boolean;
   private forgeNotice = '';
   private armedForge: { id: string; index: number } | null = null;
@@ -34,7 +34,7 @@ export class StashUI {
   constructor(
     private readonly stash: SecuredStash,
     private readonly loot: ExpeditionLoot,
-    onWithdraw: (id: string) => void,
+    onWithdraw: (id: string) => boolean,
     onReforge: (id: string, affixIndex: number) => boolean,
   ) {
     this.onWithdraw = onWithdraw;
@@ -190,7 +190,12 @@ export class StashUI {
     if (this.isBagFull) withdraw.title = 'Expedition bag full';
     else if (!this.canWithdraw) withdraw.title = 'Available at camp before departure';
     withdraw.addEventListener('click', () => {
-      this.onWithdraw(item.id);
+      const ok = this.onWithdraw(item.id);
+      // A denied/corrupt/stale storage write never moves an item into the
+      // risky bag. Explain the failure instead of silently redrawing the
+      // unchanged stash (which looked like a missed tap on iPhone).
+      this.forgeNotice = ok ? '' :
+        'Withdrawal not completed — stash unchanged. Check camp access and saved storage.';
       this.lastSignature = '';
       this.refresh(this.canWithdraw, this.loot.bagFull);
       this.render();
