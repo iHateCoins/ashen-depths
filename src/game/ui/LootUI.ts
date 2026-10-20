@@ -43,6 +43,8 @@ function previewDifference(current: EquipmentStats, next: EquipmentStats): strin
 export class LootUI {
   private readonly button: HTMLButtonElement;
   private readonly finishButton: HTMLButtonElement;
+  private readonly descendButton: HTMLButtonElement;
+  private descentOffered = false;
   private readonly finishWarning: HTMLElement;
   private victoryOffered = false;
   private readonly nearbyPanel: HTMLElement;
@@ -89,6 +91,13 @@ export class LootUI {
     finish.hidden = true;
     document.body.append(finish);
     this.finishButton = finish;
+    const descend = createElement('button', 'ashen-descend-run', 'DESCEND TO DEPTH 2');
+    descend.id = 'ashen-descend-run';
+    descend.type = 'button';
+    descend.hidden = true;
+    descend.setAttribute('aria-label', 'DESCEND TO NEXT DEPTH');
+    document.body.append(descend);
+    this.descendButton = descend;
     const finishWarning = createElement('p', 'ashen-finish-warning');
     finishWarning.id = 'ashen-finish-warning';
     finishWarning.hidden = true;
@@ -263,6 +272,20 @@ export class LootUI {
     });
   }
 
+  /** Separate from extracting: carries all unsecured equipment into more risk. */
+  enableDescent(nextDepth: number, onDescend: () => void): void {
+    if (this.descentOffered) return;
+    this.descentOffered = true;
+    this.descendButton.textContent = `DESCEND TO DEPTH ${nextDepth} · KEEP LOOT AT RISK`;
+    this.descendButton.hidden = false;
+    this.descendButton.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeBag();
+      onDescend();
+    });
+  }
+
   showFinishError(message: string): void {
     this.finishWarning.textContent = message;
     this.finishWarning.hidden = false;
@@ -423,6 +446,7 @@ export class LootUI {
     this.closeBag();
     this.button.hidden = true;
     this.finishButton.hidden = true;
+    this.descendButton.hidden = true;
     this.finishWarning.hidden = true;
     this.nearbyPanel.hidden = true;
   }
@@ -430,6 +454,7 @@ export class LootUI {
   destroy(): void {
     this.button.remove();
     this.finishButton.remove();
+    this.descendButton.remove();
     this.finishWarning.remove();
     this.nearbyPanel.remove();
     this.pickerOverlay.remove();

@@ -25,9 +25,24 @@ import { ExtractionDirector } from '../dungeon/ExtractionDirector';
 import { ExtractionUI } from '../ui/ExtractionUI';
 import { InteractionDock } from '../ui/InteractionDock';
 import { SkillLoadoutUI } from '../ui/SkillLoadoutUI';
-import { SkillProgression } from '../combat/SkillProgression';
+import { SkillProgression, rewardSourceAtDepth } from '../combat/SkillProgression';
+import { canDescend, seedForDepth } from '../dungeon/DepthProgression';
 import { SkillRewardUI } from '../ui/SkillRewardUI';
-import type { EquipmentSlot } from '../loot/ExpeditionLoot';
+import type { EquipmentSlot, LootItem } from '../loot/ExpeditionLoot';
+
+/** In-memory handoff only. Nothing here is secured without extraction. */
+interface DescentTransfer {
+  kind: 'descend';
+  /** Phaser can reuse the last restart data when restart() has no arguments. */
+  consumed?: boolean;
+  depth: number;
+  expeditionSeed: number;
+  hp: number;
+  bag: LootItem[];
+  equipped: LootItem[];
+  skills: AutoSkillSystem;
+  progression: SkillProgression;
+}
 
 const WORLD_WIDTH = 2304;
 const WORLD_HEIGHT = 1536;
@@ -84,23 +99,45 @@ export class DungeonScene extends Phaser.Scene {
   private victoryOverlay!: ResultOverlay;
   private kills = 0;
   private finalized = false;
+  private depth = 1;
+  private expeditionSeed = 0;
+  private incoming: DescentTransfer | null = null;
 
   constructor() { super('DungeonScene'); }
 
+  init(data?: DescentTransfer): void {
+    // ScenePlugin.restart() without new data can replay the previous payload.
+    // A descent handoff may initialize ONE floor only; it is not a saved run.
+    this.incoming = data?.kind === 'descend' && !data.consumed ? data : null;
+  }
+
   create(): void {
+    const carry = this.incoming;
+    this.incoming = null;
+    if (carry) carry.consumed = true;
     this.cameras.main.setBackgroundColor('#10171b');
-    this.dungeon = generateDungeon(
-      dungeonSeedFromSearch(window.location.search, () => Math.floor(Math.random() * 0x100000000)),
-    );
+    this.depth = carry?.depth ?? 1;
+    this.expeditionSeed = carry?.expeditionSeed ??
+      dungeonSeedFromSearch(window.location.search, () => Math.floor(Math.random() * 0x100000000));
+    this.dungeon = generateDungeon(seedForDepth(this.expeditionSeed, this.depth));
     this.grid = createDungeonNavigationGrid(this.dungeon);
     this.roomEncounters = new RoomEncounterDirector(this.dungeon, this.grid);
     this.optionalObjectives = new OptionalObjectiveDirector(this.dungeon, this.roomEncounters);
-    this.loot = new ExpeditionLoot(this.dungeon.seed);
+    this.loot = new ExpeditionLoot(this.dungeon.seed, undefined, this.depth);
     this.loadout = new EquipmentLoadout(this.loot);
+    if (carry) {
+      this.loot.bag.push(...carry.bag, ...carry.equipped);
+      for (const item of carry.equipped) {
+        if (this.loadout.equip(item.id) !== 'equipped') {
+          throw new Error('Cannot restore worn equipment during descent');
+        }
+      }
+    }
     this.securedStash = new SecuredStash();
-    this.progression = new SkillProgression(this.securedStash.unlockedIds);
+    this.progression = carry?.progression ?? new SkillProgression(this.securedStash.unlockedIds);
     this.extraction = new ExtractionDirector(this.dungeon);
-    this.campAvailable = true;
+    // Only the initial entrance camp permits withdrawals and class/loadout edits.
+    this.campAvailable = !carry;
     this.groundVisuals.clear();
     this.renderDungeon();
     this.renderOptionalMarkers();
@@ -108,8 +145,9 @@ export class DungeonScene extends Phaser.Scene {
     // Scenes restart without rebuilding the TypeScript object; reset every run.
     this.health = new PlayerHealth();
     this.combat = new AutoCombat();
-    this.skills = new AutoSkillSystem();
+    this.skills = carry?.skills ?? new AutoSkillSystem();
     this.recalculateEquipment();
+    if (carry) this.health.hp = Math.max(1, Math.min(this.health.maxHp, carry.hp));
     this.kills = 0;
     this.finalized = false;
     this.enemies = [];
@@ -171,10 +209,10 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M06 / PR02', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.titleLabel = this.add.text(14, 3, `ASHEN DEPTHS · DEPTH ${this.depth} · M07 / PR01`, { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(198).setVisible(false);
-    this.dungeonSeedLabel = this.add.text(14, 0, `DUNGEON SEED: ${this.dungeon.seed}`, {
+    this.dungeonSeedLabel = this.add.text(14, 0, `FLOOR SEED: ${this.dungeon.seed}`, {
       fontFamily:'Arial, sans-serif',fontSize:'12px',color:'#aab9b5',
       backgroundColor:'#10171bcc',padding:{x:10,y:6},
     }).setScrollFactor(0).setDepth(100);
@@ -212,9 +250,11 @@ export class DungeonScene extends Phaser.Scene {
     this.extractionUi = new ExtractionUI(id => this.startExtraction(id), () => this.cancelExtraction());
     this.interactionDock = new InteractionDock(() => this.cancelExtraction());
     this.interactionDock.refresh(false);
-    this.defeatOverlay = new ResultOverlay('defeat', () => this.scene.restart());
-    this.victoryOverlay = new ResultOverlay('victory', () => this.scene.restart());
-    this.extractionOverlay = new ResultOverlay('extraction', () => this.scene.restart());
+    // Always pass a fresh-start marker for player-facing restarts. The consumed
+    // descent guard also covers a bare restart() from external scene callers.
+    this.defeatOverlay = new ResultOverlay('defeat', () => this.scene.restart({ kind: 'fresh' }));
+    this.victoryOverlay = new ResultOverlay('victory', () => this.scene.restart({ kind: 'fresh' }));
+    this.extractionOverlay = new ResultOverlay('extraction', () => this.scene.restart({ kind: 'fresh' }));
     const defeatOverlay = this.defeatOverlay;
     const victoryOverlay = this.victoryOverlay;
     const explorationView = this.explorationView;
@@ -355,7 +395,7 @@ export class DungeonScene extends Phaser.Scene {
       this.recalculateEquipment();
       this.showCombatText(this.movement.position,
         `EMBER EDGE · +${reward.damageBonus} DAMAGE`, '#f9cc8d');
-      this.progression.offer('cache');
+      this.progression.offer(rewardSourceAtDepth('cache', this.depth));
       this.rewardUi.refresh();
     } else {
       const healed = this.health.heal(reward.healAmount);
@@ -443,8 +483,8 @@ export class DungeonScene extends Phaser.Scene {
       const enemy = createEnemyAgent({
         id: spawn.id,
         position: spawn.position,
-        hp: spawn.maxHp,
-        maxHp: spawn.maxHp,
+        hp: Math.round(spawn.maxHp * (1 + Math.min(this.depth - 1, 15) * 0.18)),
+        maxHp: Math.round(spawn.maxHp * (1 + Math.min(this.depth - 1, 15) * 0.18)),
       }, spawn.kind);
       this.enemies.push(enemy);
 
@@ -559,6 +599,28 @@ export class DungeonScene extends Phaser.Scene {
     return true;
   }
 
+  private descend(): void {
+    if (!canDescend(this.depth, this.roomEncounters.completed, this.health.defeated) ||
+        this.finalized || this.lootUi.isOpen || this.stashUi.isOpen ||
+        this.skillUi.isOpen || this.rewardUi.isOpen) return;
+    // The previous floor's uncollected ground gear is abandoned. Everything in
+    // the bag and equipped slots remains unsecured until extraction.
+    const transfer: DescentTransfer = {
+      kind: 'descend',
+      depth: this.depth + 1,
+      expeditionSeed: this.expeditionSeed,
+      hp: this.health.hp,
+      bag: [...this.loot.bag],
+      equipped: EQUIPMENT_SLOTS.map(slot => this.loadout.get(slot)).filter(
+        (item): item is LootItem => item !== null,
+      ),
+      skills: this.skills,
+      progression: this.progression,
+    };
+    this.cancelExtraction();
+    this.scene.restart(transfer);
+  }
+
   private secureAndFinish(mode: 'warden' | 'early' = 'warden'): void {
     if (this.health.defeated || this.finalized ||
         (mode === 'warden' && !this.roomEncounters.completed) ||
@@ -605,7 +667,7 @@ export class DungeonScene extends Phaser.Scene {
     this.waypoints = [];
     this.marker.setVisible(false);
     const lostChoices = this.progression.choicesRemaining.length;
-    const message = `${result.saved} item${result.saved === 1 ? '' : 's'} secured to this device's stash. ${this.progression.pendingUnlocks.length} new skill/support unlocks · ${this.progression.pendingForgeEmbers} Forge Embers secured. ${lostChoices > 0 ? `${lostChoices} unclaimed discovery reward${lostChoices === 1 ? '' : 's'} forfeited. ` : ''}${this.securedStash.count} items stored. New expedition awaits.`;
+    const message = `Depth ${this.depth} · ${result.saved} item${result.saved === 1 ? '' : 's'} secured to this device's stash. ${this.progression.pendingUnlocks.length} new skill/support unlocks · ${this.progression.pendingForgeEmbers} Forge Embers secured. ${lostChoices > 0 ? `${lostChoices} unclaimed discovery reward${lostChoices === 1 ? '' : 's'} forfeited. ` : ''}${this.securedStash.count} items stored. New expedition awaits.`;
     if (mode === 'early') this.extractionOverlay.show(message);
     else this.victoryOverlay.show(message);
   }
@@ -680,10 +742,13 @@ export class DungeonScene extends Phaser.Scene {
     const localHostiles = this.roomEncounters.roomHostiles(room, this.enemies);
     const alive = this.enemies.filter(enemy => enemy.hp > 0).length;
     const worn = this.loadout.stats;
-    const shortObjective = this.roomEncounters.completed ? 'WARDEN DEFEATED'
+    const shortObjective = this.roomEncounters.completed ? 'WARDEN DEFEATED · EXTRACT OR DESCEND'
       : this.roomEncounters.hasEnteredDepth ? 'DEFEAT THE WARDEN' : 'FIND THE DEEP CHAMBER';
-    this.objectiveLabel.setText(`${shortObjective}\n${alive} foes · ${localHostiles} local · ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} rooms\nBag ${this.loot.bag.length}/${this.loot.capacity} · Side ${this.optionalObjectives.claimedCount}/${this.optionalObjectives.totalCount}\nGear ${this.loadout.equippedCount}/3 · A+${this.combat.bonusDamage} · S+${worn.spell} · Armor ${worn.armor}`);
+    this.objectiveLabel.setText(`DEPTH ${this.depth} · ${shortObjective}\n${alive} foes · ${localHostiles} local · ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} rooms\nBag ${this.loot.bag.length}/${this.loot.capacity} · Side ${this.optionalObjectives.claimedCount}/${this.optionalObjectives.totalCount}\nGear ${this.loadout.equippedCount}/3 · A+${this.combat.bonusDamage} · S+${worn.spell} · Armor ${worn.armor}`);
     document.documentElement.dataset.ashenEncounter = this.roomEncounters.completed ? 'complete' : 'explore';
+    document.documentElement.dataset.ashenDepth = String(this.depth);
+    document.documentElement.dataset.ashenNextDepthUnlocked = String(
+      canDescend(this.depth, this.roomEncounters.completed, this.health.defeated));
     document.documentElement.dataset.ashenGuardianAlive = String(guardianAlive);
     document.documentElement.dataset.ashenEnemyCount = String(alive);
     document.documentElement.dataset.ashenRoomHostiles = String(localHostiles);
@@ -847,7 +912,9 @@ export class DungeonScene extends Phaser.Scene {
       const flash = this.add.circle(strike.center.x,strike.center.y,strike.radius,
         strike.hit ? 0xf26b57 : 0x89baa3,0.28).setDepth(12);
       this.tweens.add({targets:flash,alpha:0,scale:1.1,duration:240,onComplete:()=>flash.destroy()});
-      const mitigatedDamage = mitigatedHitDamage(strike.damage, this.loadout.stats.armor);
+      const mitigatedDamage = mitigatedHitDamage(
+        strike.damage + Math.min(30, (this.depth - 1) * 2), this.loadout.stats.armor,
+      );
       if (strike.hit && this.health.damage(mitigatedDamage)) {
         this.cameras.main.shake(110,0.002);
         this.showDamage(this.movement.position,mitigatedDamage,'#ff7777');
@@ -881,7 +948,10 @@ export class DungeonScene extends Phaser.Scene {
       // Defeating the Warden unlocks Finish but does not close optional
       // objectives or early extraction. Both remain until an exit is saved.
       this.lootUi.enableFinish(() => this.secureAndFinish());
-      this.progression.offer('warden');
+      if (canDescend(this.depth, this.roomEncounters.completed, this.health.defeated)) {
+        this.lootUi.enableDescent(this.depth + 1, () => this.descend());
+      }
+      this.progression.offer(rewardSourceAtDepth('warden', this.depth));
       this.rewardUi.refresh();
     }
     this.updateObjectiveStatus();

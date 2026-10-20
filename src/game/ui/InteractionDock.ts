@@ -20,6 +20,7 @@ export class InteractionDock {
   private readonly panels: Record<InteractionTab, HTMLElement>;
   private readonly buttons: Record<InteractionTab, HTMLButtonElement>;
   private readonly finishButton: HTMLElement;
+  private readonly descendButton: HTMLElement;
   private active: InteractionTab = 'loot';
   private wasMultiple = false;
   private channeling = false;
@@ -29,8 +30,9 @@ export class InteractionDock {
     const objective = document.getElementById('ashen-optional-objective');
     const extract = document.getElementById('ashen-extraction-panel');
     const finish = document.getElementById('ashen-finish-run');
+    const descend = document.getElementById('ashen-descend-run');
     const finishWarning = document.getElementById('ashen-finish-warning');
-    if (!loot || !objective || !extract || !finish || !finishWarning) {
+    if (!loot || !objective || !extract || !finish || !descend || !finishWarning) {
       throw new Error('All context controls must exist before the interaction dock');
     }
     this.panels = { loot, objective, extract };
@@ -75,12 +77,13 @@ export class InteractionDock {
 
     // The end-of-run action is always directly accessible, even if Warden
     // loot is nearby. A separate fixed Finish button would overlap the dock.
-    root.append(tabs, loot, objective, extract, finish, finishWarning);
+    root.append(tabs, loot, objective, extract, finish, descend, finishWarning);
     document.body.append(root);
     this.root = root;
     this.tabs = tabs;
     this.buttons = buttons;
     this.finishButton = finish;
+    this.descendButton = descend;
     this.render();
   }
 
@@ -100,7 +103,7 @@ export class InteractionDock {
       this.active = ORDER.find(name => available[name]) ?? 'loot';
     }
 
-    this.root.hidden = count === 0 && this.finishButton.hidden;
+    this.root.hidden = count === 0 && this.finishButton.hidden && this.descendButton.hidden;
     this.tabs.hidden = count <= 1;
     for (const name of ORDER) this.buttons[name].hidden = !available[name];
     this.wasMultiple = count > 1;

@@ -1,6 +1,14 @@
 import { ACTIVE_SKILLS, CINDER_BURST, SKILL_SUPPORTS, skillPatternLabel } from './AutoSkillSystem';
 
-export type RewardSource = 'cache' | 'warden';
+export type RewardSource = 'cache' | 'warden' | `cache:${number}` | `warden:${number}`;
+
+/** Each floor offers its own Cache and Warden reward without duplicating depth 1 IDs. */
+export function rewardSourceAtDepth(source: 'cache' | 'warden', depth: number): RewardSource {
+  if (!Number.isSafeInteger(depth) || depth < 1 || depth > 1000) {
+    throw new Error('Invalid reward depth');
+  }
+  return depth === 1 ? source : `${source}:${depth}`;
+}
 
 export interface UnlockChoice {
   readonly id: string;
