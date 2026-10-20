@@ -182,6 +182,44 @@ test('secured stash withdrawal persists once, enters risky bag, and stays withdr
   expect(errors).toEqual([]);
 });
 
+test('failed withdrawal warns the player and never places unsecured gear in the bag', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('ashen-depths-stash-v1', JSON.stringify({
+      schema: 1, revision: 1, completed: 1, items: [{
+        id: 'save-safe-weapon', name: 'Stored Iron Cleaver', baseName: 'Iron Cleaver',
+        rarity: 'magic', slot: 'weapon', itemLevel: 5,
+        affixes: [{ id: 'sharp', label: 'Attack Power', value: 7 }],
+      }],
+    }));
+  });
+  await page.goto(url);
+  await expect(page.locator('#boot-status')).toHaveCount(0, { timeout: 20000 });
+  await tap(page, page.locator('#ashen-stash-toggle'));
+  const vault = page.locator('#ashen-stash-overlay');
+  await expect(vault.locator('.ashen-stash-item')).toHaveCount(1);
+  await page.evaluate(() => {
+    const proto = Storage.prototype as Storage & { __originalSave?: typeof Storage.prototype.setItem };
+    proto.__originalSave = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(): void { throw new Error('quota'); };
+  });
+  await tap(page, vault.getByRole('button', { name: 'Withdraw Stored Iron Cleaver' }));
+  await expect(vault).toContainText('Withdrawal not completed — stash unchanged');
+  await expect(vault.locator('.ashen-stash-item')).toHaveCount(1);
+  expect(await page.evaluate(() => (window as any).__ashenE2eGame.scene.getScene('DungeonScene').loot.bag.length)).toBe(0);
+  expect(await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('ashen-depths-stash-v1')!).items.length)).toBe(1);
+  await page.evaluate(() => {
+    const proto = Storage.prototype as Storage & { __originalSave?: typeof Storage.prototype.setItem };
+    Storage.prototype.setItem = proto.__originalSave!;
+    delete proto.__originalSave;
+  });
+  await tap(page, vault.getByRole('button', { name: 'Withdraw Stored Iron Cleaver' }));
+  await expect(vault.locator('.ashen-stash-item')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__ashenE2eGame.scene.getScene('DungeonScene').loot.bag.length)).toBe(1);
+  expect(await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('ashen-depths-stash-v1')!).items.length)).toBe(0);
+});
+
 test('failed stash save leaves Finish action usable and does not fake victory', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
