@@ -1,4 +1,5 @@
 import { CHARACTER_CLASSES, type CharacterClassId } from '../character/CharacterClasses';
+import { PASSIVE_TREES, passiveEffects, type PassiveAllocationResult } from '../character/PassiveTrees';
 
 /** Deliberate class selection at the entrance; native buttons work on iPhone. */
 export class ClassSelectionUI {
@@ -7,6 +8,7 @@ export class ClassSelectionUI {
   private readonly cards: HTMLElement;
   private readonly warning: HTMLElement;
   private readonly passiveSummary: HTMLElement;
+  private readonly tree: HTMLElement;
   private open = false;
 
   constructor(
@@ -14,6 +16,8 @@ export class ClassSelectionUI {
     private readonly canChange: () => boolean,
     private readonly onChoose: (id: CharacterClassId) => boolean,
     private readonly passiveCounts: () => { banked: number; pending: number },
+    private readonly allocationState: () => { selected: readonly string[]; available: number; canAllocate: boolean },
+    private readonly onAllocate: (id: string) => PassiveAllocationResult | 'storage-error',
   ) {
     const toggle = document.createElement('button');
     toggle.id = 'ashen-class-toggle';
@@ -50,11 +54,15 @@ export class ClassSelectionUI {
     passiveSummary.className = 'ashen-class-passive-summary';
     const cards = document.createElement('div');
     cards.className = 'ashen-class-cards';
+    const tree = document.createElement('section');
+    tree.className = 'ashen-passive-tree';
+    tree.id = 'ashen-passive-tree';
+    tree.setAttribute('aria-label', 'Passive skill tree');
     const warning = document.createElement('p');
     warning.className = 'ashen-class-warning';
     warning.setAttribute('role', 'status');
     warning.hidden = true;
-    panel.append(header, intro, passiveSummary, cards, warning);
+    panel.append(header, intro, passiveSummary, cards, tree, warning);
     overlay.append(panel);
     document.body.append(toggle, overlay);
     this.toggle = toggle;
@@ -62,6 +70,7 @@ export class ClassSelectionUI {
     this.cards = cards;
     this.warning = warning;
     this.passiveSummary = passiveSummary;
+    this.tree = tree;
     this.refresh();
   }
 
@@ -70,7 +79,8 @@ export class ClassSelectionUI {
   updatePassiveStatus(): void {
     const { banked, pending } = this.passiveCounts();
     this.toggle.textContent = `CLASS: ${CHARACTER_CLASSES[this.selected()].name.toUpperCase()} · PASSIVES ${banked}${pending ? ` (+${pending} RISK)` : ''}`;
-    this.passiveSummary.textContent = `Passive points: ${banked} secured · ${pending} unsecured. Defeat the Warden at new even-numbered depths (2, 4, 6…) and extract to bank them. Passive allocation arrives in the next milestone.`;
+    const state=this.allocationState();
+    this.passiveSummary.textContent = `Passive points: ${banked} secured · ${pending} unsecured · ${state.selected.length} spent · ${state.available} available. Defeat the Warden at new even-numbered depths (2, 4, 6…) and extract to bank them. Only secured points can be spent at the initial camp.`;
   }
 
   refresh(): void {
@@ -114,6 +124,63 @@ export class ClassSelectionUI {
     }
     if (!editable) this.showError('Class is locked for this expedition. Change before withdrawing equipment or leaving camp on your next run.');
     else this.warning.hidden = true;
+    this.renderTree();
+  }
+
+  private renderTree(): void {
+    this.tree.replaceChildren();
+    const cls=this.selected();
+    const state=this.allocationState();
+    const nodes=PASSIVE_TREES[cls];
+    const h3=document.createElement('h3');
+    h3.textContent = `${CHARACTER_CLASSES[cls].name} passive tree`;
+    const hint=document.createElement('p');
+    hint.textContent='Three paths: Assault, Ward and Hybrid. Each node costs 1 secured point and requires its preceding node. Choices are permanent for now; no free respec.';
+    this.tree.append(h3,hint);
+    const branches=document.createElement('div');
+    branches.className='ashen-passive-branches';
+    for(const branchId of ['assault','ward','hybrid'] as const){
+      const lane=document.createElement('section');
+      lane.className='ashen-passive-lane';
+      const laneTitle=document.createElement('h4');
+      laneTitle.textContent=branchId==='assault'?'Assault':branchId==='ward'?'Ward':'Hybrid';
+      lane.append(laneTitle);
+      for(const node of nodes.filter(item=>item.branch===branchId)){
+        const learned=state.selected.includes(node.id);
+        const eligible=node.requires.every(req=>state.selected.includes(req));
+        const button=document.createElement('button');
+        button.className='ashen-passive-node';
+        button.type='button';
+        button.dataset.nodeId=node.id;
+        button.dataset.allocated=String(learned);
+        button.setAttribute('aria-label',`Allocate ${node.name}`);
+        button.disabled=learned || !eligible || state.available<=0 || !state.canAllocate;
+        const name=document.createElement('strong');
+        name.textContent=`${node.tier}. ${node.name}`;
+        const detail=document.createElement('span');
+        detail.textContent=node.description;
+        const status=document.createElement('span');
+        status.className='ashen-passive-node-status';
+        status.textContent=learned?'ALLOCATED':!eligible?'PREREQUISITE':!state.canAllocate?'ENTRANCE CAMP ONLY':state.available===0?'NO SECURED POINTS':'SPEND 1 POINT';
+        button.append(name,detail,status);
+        button.addEventListener('click',event=>{
+          event.preventDefault();event.stopPropagation();
+          const result=this.onAllocate(node.id);
+          if(result==='allocated'){this.warning.hidden=true;this.refresh();}
+          else this.showError(result==='storage-error'
+            ? 'Passive allocation could not be saved. No point was spent; try again.'
+            : 'This node cannot be allocated yet. Check secured points and prerequisites.');
+        });
+        lane.append(button);
+      }
+      branches.append(lane);
+    }
+    this.tree.append(branches);
+    const effects=passiveEffects(cls,state.selected);
+    const summary=document.createElement('p');
+    summary.className='ashen-passive-effects';
+    summary.textContent=`Current permanent bonuses: +${effects.attack} Attack · +${effects.spell} Spell · +${effects.armor} Armor · +${effects.health} HP · ${effects.cooldownReduction}% faster skill cooldowns`;
+    this.tree.append(summary);
   }
 
   private showError(message: string): void {
