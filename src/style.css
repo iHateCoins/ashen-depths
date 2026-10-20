@@ -703,3 +703,11 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
 
 .ashen-stash-forged{font-weight:700;color:#ffbeac!important;}
 .ashen-stash-forge-warning{color:#ffb4a8!important;font-weight:700;font-size:12px;}
+
+/* M06 PR02 — separate an item's intrinsic base power from rolled affixes. */
+.ashen-base-stats {
+  color: #b9dac5;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}

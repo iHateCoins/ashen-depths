@@ -1,5 +1,6 @@
 import { affixSummary, type ExpeditionLoot, type LootItem } from '../loot/ExpeditionLoot';
 import { SecuredStash } from '../loot/SecuredStash';
+import { baseBonusSummary } from '../loot/EquipmentLoadout';
 
 function element<K extends keyof HTMLElementTagNameMap>(
   tag: K, className: string, label?: string,
@@ -142,6 +143,7 @@ export class StashUI {
       : item.rarity === 'magic' ? '#88b9f9' : '#ced3d4';
     const type = element('span', '', `${item.rarity.toUpperCase()} · ${item.slot.toUpperCase()} · LEVEL ${item.itemLevel}`);
     details.append(name, type);
+    details.append(element('span', 'ashen-base-stats', baseBonusSummary(item)));
     if (item.forged) details.append(element('span', 'ashen-stash-forged',
       `FORGED — ${item.forgeOutcome === 'erased' ? 'AFFIX ERASED' : item.forgeOutcome === 'cursed' ? 'CURSED' : 'REFORGED'} · No attempts remaining`));
     for (const [index, affix] of item.affixes.entries()) {

@@ -1,6 +1,6 @@
 import { affixSummary, type ExpeditionLoot, type GroundLoot, type LootItem, type ItemRarity, type EquipmentSlot } from '../loot/ExpeditionLoot';
 import {
-  EQUIPMENT_SLOTS, EquipmentLoadout, itemBonuses, type EquipmentStats,
+  EQUIPMENT_SLOTS, EquipmentLoadout, itemBonuses, baseBonusSummary, type EquipmentStats,
 } from '../loot/EquipmentLoadout';
 
 const RARITY_COLOR: Readonly<Record<ItemRarity, string>> = {
@@ -218,6 +218,7 @@ export class LootUI {
       info.append(createElement('span', '',
         `${drop.item.rarity.toUpperCase()} · ${drop.item.slot.toUpperCase()} · LEVEL ${drop.item.itemLevel}`));
       info.append(createElement('span', '', statLines(itemBonuses(drop.item))));
+      info.append(createElement('span', 'ashen-base-stats', baseBonusSummary(drop.item)));
       info.append(createElement('span', 'ashen-bag-comparison',
         previewDifference(this.equipment.stats, this.equipment.previewEquip(drop.item))));
       const button = createElement('button', 'ashen-loot-picker-take', 'TAKE');
@@ -301,7 +302,8 @@ export class LootUI {
       if (item) {
         const name = createElement('span', '', item.name);
         name.style.color = RARITY_COLOR[item.rarity];
-        description.append(name, createElement('span', '', statLines(itemBonuses(item))));
+        description.append(name, createElement('span', '', statLines(itemBonuses(item))),
+          createElement('span', 'ashen-base-stats', baseBonusSummary(item)));
         const unequip = createElement('button', 'ashen-bag-unequip', 'UNEQUIP');
         unequip.type = 'button';
         unequip.setAttribute('aria-label', `Unequip ${slot}`);
@@ -341,6 +343,7 @@ export class LootUI {
       `FORGED · ${item.forgeOutcome?.toUpperCase() ?? 'NO ATTEMPTS REMAINING'}`));
     const bonuses = itemBonuses(item);
     details.append(createElement('span', '', statLines(bonuses)));
+    details.append(createElement('span', 'ashen-base-stats', baseBonusSummary(item)));
     if (item.affixes.length) {
       details.append(createElement('span', '', item.affixes.map(
         modifier => affixSummary(modifier),
@@ -405,7 +408,7 @@ export class LootUI {
     this.nearbyPanel.hidden = false;
     this.nearbyTitle.textContent = nearest.item.name;
     this.nearbyTitle.style.color = RARITY_COLOR[nearest.item.rarity];
-    this.nearbyDescription.textContent = `${nearest.item.rarity.toUpperCase()} ${nearest.item.slot} · ${nearest.item.affixes.length ? nearest.item.affixes.map(
+    this.nearbyDescription.textContent = `${nearest.item.rarity.toUpperCase()} ${nearest.item.slot} · ${baseBonusSummary(nearest.item)} · ${nearest.item.affixes.length ? nearest.item.affixes.map(
       affix => affixSummary(affix),
     ).join(', ') : 'No modifiers'}`;
     this.pickupButton.textContent = this.loot.bagFull ? 'BAG FULL' : 'PICK UP';
