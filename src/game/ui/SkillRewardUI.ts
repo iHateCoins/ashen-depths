@@ -58,7 +58,8 @@ export class SkillRewardUI {
   refresh(): void {
     const n = this.progression.choicesRemaining.length;
     this.toggle.hidden = n === 0 || !this.canOpen();
-    this.toggle.textContent = `DISCOVERIES ${n}`;
+    this.toggle.textContent = `CLAIM REWARDS ${n}`;
+    this.toggle.title = n ? `${n} reward choice(s) waiting. Choose before extraction or lose them.` : 'All discoveries claimed';
     if (this.open) this.render();
   }
 

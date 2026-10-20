@@ -536,7 +536,7 @@ export class DungeonScene extends Phaser.Scene {
     }
     const nearby = this.extraction.nearby(this.movement.position);
     this.extractionUi.show(nearby, this.extraction.phase,
-      this.extraction.remaining);
+      this.extraction.remaining, true, this.progression.choicesRemaining.length);
     this.interactionDock.refresh(this.extraction.phase === 'channeling');
   }
 
@@ -582,7 +582,8 @@ export class DungeonScene extends Phaser.Scene {
       if (mode === 'early') {
         this.extraction.resetAfterSaveFailure();
         this.extractionUi.show(this.extraction.nearby(this.movement.position),
-          this.extraction.phase, this.extraction.remaining);
+          this.extraction.phase, this.extraction.remaining, true,
+          this.progression.choicesRemaining.length);
         this.extractionUi.showError(message + ' You may attempt escape again.');
         this.interactionDock.refresh(false);
       } else {
@@ -602,7 +603,8 @@ export class DungeonScene extends Phaser.Scene {
     this.movement.stop();
     this.waypoints = [];
     this.marker.setVisible(false);
-    const message = `${result.saved} item${result.saved === 1 ? '' : 's'} secured to this device's stash. ${this.progression.pendingUnlocks.length} new skill/support unlocks · ${this.progression.pendingForgeEmbers} Forge Embers secured. ${this.securedStash.count} items stored. New expedition awaits.`;
+    const lostChoices = this.progression.choicesRemaining.length;
+    const message = `${result.saved} item${result.saved === 1 ? '' : 's'} secured to this device's stash. ${this.progression.pendingUnlocks.length} new skill/support unlocks · ${this.progression.pendingForgeEmbers} Forge Embers secured. ${lostChoices > 0 ? `${lostChoices} unclaimed discovery reward${lostChoices === 1 ? '' : 's'} forfeited. ` : ''}${this.securedStash.count} items stored. New expedition awaits.`;
     if (mode === 'early') this.extractionOverlay.show(message);
     else this.victoryOverlay.show(message);
   }
@@ -696,6 +698,8 @@ export class DungeonScene extends Phaser.Scene {
     document.documentElement.dataset.ashenPendingUnlocks = String(this.progression.pendingUnlocks.length);
     document.documentElement.dataset.ashenSecuredUnlocks = String(this.progression.secured.length);
     document.documentElement.dataset.ashenPendingForgeEmbers = String(this.progression.pendingForgeEmbers);
+    document.documentElement.dataset.ashenUnclaimedDiscoveries = String(this.progression.choicesRemaining.length);
+    this.lootUi.setUnclaimedDiscoveries(this.progression.choicesRemaining.length);
     document.documentElement.dataset.ashenSecuredForgeEmbers = String(this.securedStash.forgeEmbers);
     document.documentElement.dataset.ashenExitCount = String(this.extraction.sites.length);
     document.documentElement.dataset.ashenExtractionPhase = this.extraction.phase;

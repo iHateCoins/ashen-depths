@@ -234,6 +234,19 @@ export class LootUI {
     }
   }
 
+  /** Warn visibly when Finish would forfeit an unclaimed discovery choice. */
+  setUnclaimedDiscoveries(count: number): void {
+    const safeCount = Math.max(0, Math.floor(count));
+    this.finishButton.textContent = safeCount
+      ? `FINISH EXPEDITION · ${safeCount} UNCLAIMED REWARD${safeCount === 1 ? '' : 'S'} LOST`
+      : 'FINISH EXPEDITION';
+    // Keep an accessible stable action name and put the warning in its description.
+    this.finishButton.setAttribute('aria-label', 'FINISH EXPEDITION');
+    this.finishButton.title = safeCount
+      ? `Claim ${safeCount} discovery reward${safeCount === 1 ? '' : 's'} with CLAIM REWARDS before finishing or forfeit them.`
+      : 'Secure carried loot and claimed discoveries';
+  }
+
   /** The Warden drop remains accessible until the player finishes the run. */
   enableFinish(onFinish: () => void): void {
     if (this.victoryOffered) return;
