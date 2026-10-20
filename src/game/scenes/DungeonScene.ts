@@ -868,7 +868,7 @@ export class DungeonScene extends Phaser.Scene {
     if (this.extraction.phase === 'channeling' &&
         (this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen ||
          this.rewardUi.isOpen || this.classUi.isOpen)) this.cancelExtraction();
-    if(this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen || this.rewardUi.isOpen) return;
+    if(this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen || this.rewardUi.isOpen || this.classUi.isOpen) return;
     const hpBeforeFrame = this.health.hp;
     const oldX = this.movement.position.x;
     const oldY = this.movement.position.y;
