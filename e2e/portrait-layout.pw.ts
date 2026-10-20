@@ -88,11 +88,10 @@ test('portrait iPhone controls remain visible, independently tappable and clear 
   }
 });
 
-test('rotating portrait to landscape reflows the HUD and buttons without blocking movement',async({page})=>{
-  await page.setViewportSize({width:390,height:844});
-  await page.goto(url);
-  await expect(page.locator('#boot-status')).toHaveCount(0,{timeout:20000});
-  await page.setViewportSize({width:844,height:390});
+/** Verify the landscape build rather than assuming a viewport-size change took
+ * effect: mobile WebKit may retain its original layout viewport dimensions in
+ * Playwright even after page.setViewportSize() on an already-loaded page. */
+async function assertLandscape(page:Page):Promise<void>{
   await expect.poll(()=>page.evaluate(()=>{
     const scene=(window as any).__ashenE2eGame.scene.getScene('DungeonScene') as any;
     return scene.scale.width;
@@ -108,12 +107,51 @@ test('rotating portrait to landscape reflows the HUD and buttons without blockin
   expect(g.controls.filter(c=>c.visible).every(c=>c.hittable)).toBe(true);
   for (const hud of [g.title,g.health,g.objective])
     expect(overlapping(hud,g.map)).toBe(false);
-  await page.setViewportSize({width:390,height:844});
+}
+
+async function assertPortrait(page:Page):Promise<void>{
   await expect.poll(()=>page.evaluate(()=>{
     const scene=(window as any).__ashenE2eGame.scene.getScene('DungeonScene') as any;
-    return scene.objectiveLabel.text.startsWith('FIND THE DEEP CHAMBER');
-  })).toBe(true);
-  const again=await geometry(page);
-  expect(again.controls.filter(c=>c.visible).every(c=>c.hittable)).toBe(true);
-  expect(again.skill.top).toBeGreaterThanOrEqual(again.objective.bottom+4);
+    return scene.scale.width === 390 &&
+      scene.objectiveLabel.text.startsWith('FIND THE DEEP CHAMBER');
+  }),{timeout:12000}).toBe(true);
+  const g=await geometry(page);
+  expect(g.controls.filter(c=>c.visible).every(c=>c.hittable)).toBe(true);
+  expect(g.skill.top).toBeGreaterThanOrEqual(g.objective.bottom+4);
+  for(const hud of [g.title,g.health,g.objective,g.skill])
+    expect(overlapping(hud,g.map)).toBe(false);
+}
+
+test('both orientations show unclipped HUD and tappable controls; Chromium also live-rotates',async({page,browser})=>{
+  await page.setViewportSize({width:390,height:844});
+  await page.goto(url);
+  await expect(page.locator('#boot-status')).toHaveCount(0,{timeout:20000});
+  await assertPortrait(page);
+  if (test.info().project.name === 'iphone-safari') {
+    // WebKit mobile emulation does not reliably alter the layout viewport on
+    // page.setViewportSize() once loaded. The previous test falsely assumed
+    // window.innerWidth would change and failed with 390 !== 844 despite 58
+    // other Safari tests passing. Use a real NEW landscape WebKit browsing
+    // context so Phaser initializes from the actual layout viewport.
+    // Chromium still verifies live rotation below.
+    const landscape = await browser.newContext({
+      viewport:{width:844,height:390}, isMobile:true, hasTouch:true,
+    });
+    try {
+      const landscapePage = await landscape.newPage();
+      await landscapePage.goto(url);
+      await expect(landscapePage.locator('#boot-status')).toHaveCount(0,{timeout:20000});
+      await assertLandscape(landscapePage);
+    } finally {
+      await landscape.close();
+    }
+    // Original portrait WebKit context remains valid, independently verifying
+    // both orientations rather than silently skipping the test.
+    await assertPortrait(page);
+    return;
+  }
+  await page.setViewportSize({width:844,height:390});
+  await assertLandscape(page);
+  await page.setViewportSize({width:390,height:844});
+  await assertPortrait(page);
 });
