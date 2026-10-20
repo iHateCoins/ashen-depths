@@ -4,14 +4,14 @@ const url = 'http://127.0.0.1:4173/ashen-depths/?seed=42';
 
 async function tap(page: Page, control: Locator): Promise<void> {
   await expect(control).toBeVisible({ timeout: 10000 });
-  // The fixed stash/bag controls must not wait on browser scrolling: the
-  // document deliberately has overflow:hidden in the Phaser app.
+  // Tall item cards can push Withdraw below the visible scrollable stash
+  // panel, particularly in landscape and iPhone Safari. A raw (x,y) touch
+  // never scrolls and may silently hit a different element.
+  await control.scrollIntoViewIfNeeded();
   if (test.info().project.name === 'desktop') {
     await control.click();
   } else {
-    const box = await control.boundingBox();
-    expect(box).not.toBeNull();
-    await page.touchscreen.tap(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await control.tap(); // Performs actionability checks and targets the real button.
   }
 }
 
@@ -103,6 +103,12 @@ test('Warden finish saves carried and equipped loot across restarts and page rel
   const withdraw = vault.getByRole('button', { name: /^Withdraw /i }).first();
   await expect(withdraw).toBeEnabled();
   await tap(page, withdraw);
+  // Verify the persistent ownership transaction first, then the refreshed UI.
+  // A missed touch must fail at its source, not later on reload.
+  await expect.poll(() => page.evaluate(() => {
+    const raw = localStorage.getItem('ashen-depths-stash-v1');
+    return raw ? JSON.parse(raw).items.length : -1;
+  })).toBe(1);
   await expect(vault.locator('.ashen-stash-item')).toHaveCount(1);
   await tap(page, vault.getByRole('button', { name: 'CLOSE' }));
   await expect.poll(() => page.evaluate(() =>
