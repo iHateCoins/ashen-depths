@@ -171,7 +171,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M05 / PR06', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.titleLabel = this.add.text(14, 3, 'ASHEN DEPTHS · M06 / STABILITY 01', { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(198).setVisible(false);
     this.dungeonSeedLabel = this.add.text(14, 0, `DUNGEON SEED: ${this.dungeon.seed}`, {
@@ -547,15 +547,16 @@ export class DungeonScene extends Phaser.Scene {
     return saved;
   }
 
-  private withdrawFromStash(id: string): void {
-    if (this.health.defeated || this.finalized || !this.campAvailable || this.loot.bagFull) return;
+  private withdrawFromStash(id: string): boolean {
+    if (this.health.defeated || this.finalized || !this.campAvailable || this.loot.bagFull) return false;
     const item = this.securedStash.withdraw(id);
-    if (!item) return;
+    if (!item) return false;
     // The persistent transaction succeeds BEFORE the insecure bag is mutated.
     this.loot.bag.push(item);
     this.refreshLootPrompt();
     this.stashUi.refresh(this.campAvailable, this.loot.bagFull);
     this.updateObjectiveStatus();
+    return true;
   }
 
   private secureAndFinish(mode: 'warden' | 'early' = 'warden'): void {

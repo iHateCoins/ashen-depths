@@ -95,10 +95,46 @@ test('Warden finish saves carried and equipped loot across restarts and page rel
     document.documentElement.dataset.ashenEquipmentCount
   )).toBe('0');
 
-  // This is a stash persistence test, not a combat survival test. Keep
-  // newly spawned monsters out of attack range while the player handles the
-  // camp stash; otherwise the scene can enter defeat while assertions run,
-  // freezing the HUD dataset before it records a successful withdrawal.
+  // Boss loot is now secured and visible in the following expedition.
+  // Withdrawal and reload are tested independently below, with known
+  // localStorage fixtures, so this test cannot accidentally hide a problem
+  // behind unrelated combat or a later browser navigation.
+  expect(errors).toEqual([]);
+});
+
+test('secured stash withdrawal persists once, enters risky bag, and stays withdrawn after reload', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.addInitScript(() => {
+    // Playwright init scripts also run on reload: seed only once per
+    // browsing context or the reload would silently recreate withdrawn gear.
+    if (sessionStorage.getItem('ashen-e2e-stash-seeded')) return;
+    sessionStorage.setItem('ashen-e2e-stash-seeded', '1');
+    localStorage.setItem('ashen-depths-stash-v1', JSON.stringify({
+      schema: 1, revision: 2, completed: 1, unlocks: [], forgeEmbers: 0,
+      items: [
+        {
+          id: 'stash-old-weapon', name: 'Weathered Iron Cleaver', baseName: 'Iron Cleaver',
+          rarity: 'magic', slot: 'weapon', itemLevel: 5,
+          affixes: [{ id: 'sharp', label: 'Attack Power', value: 7 }],
+        },
+        {
+          id: 'stash-old-armor', name: 'Old Ward Plate', baseName: 'Ward Plate',
+          rarity: 'rare', slot: 'armor', itemLevel: 8,
+          affixes: [
+            { id: 'sturdy', label: 'Armor', value: 6 },
+            { id: 'vital', label: 'Maximum Health', value: 8 },
+          ],
+        },
+      ],
+    }));
+  });
+  await page.goto(url);
+  await expect(page.locator('canvas')).toBeVisible({ timeout: 20000 });
+  await expect(page.locator('#boot-status')).toHaveCount(0, { timeout: 20000 });
+  await expect(page.locator('#ashen-stash-toggle')).toContainText('STASH 2');
+  expect(await page.evaluate(() => document.documentElement.dataset.ashenStashStatus)).toBe('ready');
+
   await page.evaluate(() => {
     const game = (window as any).__ashenE2eGame;
     const scene = game.scene.getScene('DungeonScene') as any;
@@ -112,41 +148,76 @@ test('Warden finish saves carried and equipped loot across restarts and page rel
   const vault = page.locator('#ashen-stash-overlay');
   await expect(vault).toBeVisible();
   await expect(vault.locator('.ashen-stash-item')).toHaveCount(2);
-  await expect(vault).toContainText('1 successful expedition');
-  const withdraw = vault.getByRole('button', { name: /^Withdraw /i }).first();
+  const withdraw = vault.getByRole('button', { name: 'Withdraw Weathered Iron Cleaver' });
   await expect(withdraw).toBeEnabled();
   await tap(page, withdraw);
-  // Verify the persistent ownership transaction first, then the refreshed UI.
-  // A missed touch must fail at its source, not later on reload.
+
+  // The durable save is authoritative, rather than a delayed HUD data flag.
   await expect.poll(() => page.evaluate(() => {
     const raw = localStorage.getItem('ashen-depths-stash-v1');
-    return raw ? JSON.parse(raw).items.length : -1;
-  })).toBe(1);
+    return raw ? JSON.parse(raw).items.map((item: { id: string }) => item.id) : [];
+  })).toEqual(['stash-old-armor']);
   await expect.poll(() => page.evaluate(() => {
     const scene = (window as any).__ashenE2eGame.scene.getScene('DungeonScene') as any;
-    return scene.loot.bag.length;
-  })).toBe(1);
+    return scene.loot.bag.map((item: { id: string }) => item.id);
+  })).toEqual(['stash-old-weapon']);
   await expect(vault.locator('.ashen-stash-item')).toHaveCount(1);
   await tap(page, vault.getByRole('button', { name: 'CLOSE' }));
   await expect(vault).toBeHidden();
-  // Assert what the player actually sees, in addition to the transaction
-  // and live bag ownership checked above. The scene's telemetry dataset is
-  // diagnostic and can lag or pause during a modal transition.
   await expect(page.locator('#ashen-stash-toggle')).toContainText('STASH 1');
   await expect(page.locator('#ashen-bag-toggle')).toContainText('BAG 1');
-  expect(errors).toEqual([]);
 
-  // A withdrawal is intentionally unsecured: reloading without extraction
-  // cannot duplicate the item back into persistent storage.
-  await page.reload();
-  await expect(page.locator('canvas')).toBeVisible({ timeout: 20000 });
+  // Real reload in the same browsing context: pending loot is lost,
+  // secured items remain. The fixture explicitly does not reseed on reload.
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#boot-status')).toHaveCount(0, { timeout: 25000 });
+  await expect(page.locator('#ashen-stash-toggle')).toBeVisible({ timeout: 25000 });
   await expect(page.locator('#ashen-stash-toggle')).toContainText('STASH 1');
-  await expect.poll(() => page.evaluate(() =>
-    document.documentElement.dataset.ashenBagCount
-  )).toBe('0');
+  await expect(page.locator('#ashen-bag-toggle')).toContainText('BAG 0');
   await tap(page, page.locator('#ashen-stash-toggle'));
-  await expect(page.locator('.ashen-stash-item')).toHaveCount(1);
+  await expect(page.locator('#ashen-stash-overlay .ashen-stash-item')).toHaveCount(1);
+  await expect(page.locator('#ashen-stash-overlay')).toContainText('Old Ward Plate');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('ashen-depths-stash-v1')!));
+  expect(saved.items.map((item: { id: string }) => item.id)).toEqual(['stash-old-armor']);
   expect(errors).toEqual([]);
+});
+
+test('failed withdrawal warns the player and never places unsecured gear in the bag', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('ashen-depths-stash-v1', JSON.stringify({
+      schema: 1, revision: 1, completed: 1, items: [{
+        id: 'save-safe-weapon', name: 'Stored Iron Cleaver', baseName: 'Iron Cleaver',
+        rarity: 'magic', slot: 'weapon', itemLevel: 5,
+        affixes: [{ id: 'sharp', label: 'Attack Power', value: 7 }],
+      }],
+    }));
+  });
+  await page.goto(url);
+  await expect(page.locator('#boot-status')).toHaveCount(0, { timeout: 20000 });
+  await tap(page, page.locator('#ashen-stash-toggle'));
+  const vault = page.locator('#ashen-stash-overlay');
+  await expect(vault.locator('.ashen-stash-item')).toHaveCount(1);
+  await page.evaluate(() => {
+    const proto = Storage.prototype as Storage & { __originalSave?: typeof Storage.prototype.setItem };
+    proto.__originalSave = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(): void { throw new Error('quota'); };
+  });
+  await tap(page, vault.getByRole('button', { name: 'Withdraw Stored Iron Cleaver' }));
+  await expect(vault).toContainText('Withdrawal not completed — stash unchanged');
+  await expect(vault.locator('.ashen-stash-item')).toHaveCount(1);
+  expect(await page.evaluate(() => (window as any).__ashenE2eGame.scene.getScene('DungeonScene').loot.bag.length)).toBe(0);
+  expect(await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('ashen-depths-stash-v1')!).items.length)).toBe(1);
+  await page.evaluate(() => {
+    const proto = Storage.prototype as Storage & { __originalSave?: typeof Storage.prototype.setItem };
+    Storage.prototype.setItem = proto.__originalSave!;
+    delete proto.__originalSave;
+  });
+  await tap(page, vault.getByRole('button', { name: 'Withdraw Stored Iron Cleaver' }));
+  await expect(vault.locator('.ashen-stash-item')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__ashenE2eGame.scene.getScene('DungeonScene').loot.bag.length)).toBe(1);
+  expect(await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('ashen-depths-stash-v1')!).items.length)).toBe(0);
 });
 
 test('failed stash save leaves Finish action usable and does not fake victory', async ({ page }) => {
