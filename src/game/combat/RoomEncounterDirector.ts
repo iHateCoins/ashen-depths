@@ -22,7 +22,7 @@ export interface RoomEnemyPlacement {
  * Seeded offsets make every placement reproducible and navigable.
  */
 export function planRoomEncounters(
-  layout: DungeonLayout, grid: NavigationGrid, depth = 1,
+  layout: DungeonLayout, grid: NavigationGrid, floorDepth = 1,
 ): RoomEnemyPlacement[] {
   const entrance = layout.rooms.find(room => room.role === 'entrance');
   const depth = layout.rooms.find(room => room.role === 'depth');
@@ -52,11 +52,11 @@ export function planRoomEncounters(
 
     // Depth 1 keeps its original populations exactly. Deeper floors may
     // replace one wretch with a quick skirmisher and promote a seeded elite.
-    if (depth >= 3 && (room.role === 'cache' || remote || room.role === 'depth')) {
+    if (floorDepth >= 3 && (room.role === 'cache' || remote || room.role === 'depth')) {
       const lastWretch = kinds.lastIndexOf('wretch');
       if (lastWretch >= 0) kinds[lastWretch] = 'skirmisher';
     }
-    const eliteRoom = depth >= 3 && room.role !== 'depth' &&
+    const eliteRoom = floorDepth >= 3 && room.role !== 'depth' &&
       lootHash(layout.seed,room.id,0xE11E) % 3 === 0;
 
     const rotation = (layout.seed + room.id * 11) % (offsets.length - 1);
@@ -88,7 +88,7 @@ export function planRoomEncounters(
         kind,
         guardian,
         ...(eliteRoom && i === 0 ? { elite: true as const } : {}),
-        ...(guardian && depth > 1 ? {wardenVariant:wardenForDepth(depth)} : {}),
+        ...(guardian && floorDepth > 1 ? {wardenVariant:wardenForDepth(floorDepth)} : {}),
         maxHp: guardian ? 300 : kind === 'brute' ? 220
           : kind === 'skirmisher' ? 85 : 100,
         position,
