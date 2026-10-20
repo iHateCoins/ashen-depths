@@ -147,6 +147,8 @@ export class AutoSkillSystem {
   bonusDamage = 0;
   /** Attack Power from equipment scales attack-tagged skills only. */
   bonusAttackDamage = 0;
+  /** Permanent passive haste, applied after support modifiers and never over 30%. */
+  passiveCooldownReduction = 0;
   private equippedSkills: AutoSkillDefinition[];
   get equipped(): readonly AutoSkillDefinition[] { return [...this.equippedSkills]; }
 
@@ -213,7 +215,9 @@ export class AutoSkillSystem {
         ? this.bonusAttackDamage : this.bonusDamage)) * (support?.damageMultiplier ?? 1))),
       radius: Math.max(1, Math.round(skill.radius * (support?.radiusMultiplier ?? 1))),
       range: skill.range,
-      cooldownSeconds: Math.round(skill.cooldownSeconds * (support?.cooldownMultiplier ?? 1) * 100) / 100,
+      cooldownSeconds: Math.max(0.1, Math.round(skill.cooldownSeconds *
+        (support?.cooldownMultiplier ?? 1) *
+        (1 - Math.max(0, Math.min(30, this.passiveCooldownReduction)) / 100) * 100) / 100),
     };
   }
 
