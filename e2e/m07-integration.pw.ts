@@ -153,7 +153,7 @@ test('M07: death after an even-depth Warden loses only unsecured rewards',async(
   });
   await expect(page.locator('#ashen-defeat-overlay')).toBeVisible({timeout:12000});
   expect(await page.evaluate(()=>localStorage.getItem('ashen-depths-stash-v1'))).toBe(before);
-  await activate(page,page.locator('#ashen-defeat-overlay').getByRole('button',{name:'NEW EXPEDITION'}));
+  await activate(page,page.locator('#ashen-defeat-overlay').getByRole('button',{name:'RESTART EXPEDITION'}));
   await expect.poll(()=>page.evaluate(()=>document.documentElement.dataset.ashenDepth)).toBe('1');
   expect(await readRun(page)).toMatchObject({depth:1,banked:1,pending:0,embers:0});
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('ashen-depths-stash-v1')!).passiveMilestones))
