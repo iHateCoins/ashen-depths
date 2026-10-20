@@ -31,6 +31,7 @@ import { canDescend, seedForDepth } from '../dungeon/DepthProgression';
 import { enemyHealthMultiplier, enemyStrikeDepthBonus, threatAtDepth } from '../dungeon/DepthBalance';
 import { SkillRewardUI } from '../ui/SkillRewardUI';
 import { ClassSelectionUI } from '../ui/ClassSelectionUI';
+import { narrowPortrait, viewportInsets } from '../ui/ViewportLayout';
 import { CHARACTER_CLASSES, type CharacterClassId } from '../character/CharacterClasses';
 import { PassiveMilestoneProgress } from '../character/PassiveMilestones';
 import { PassiveTreeProgress, type PassiveAllocationResult } from '../character/PassiveTrees';
@@ -459,18 +460,37 @@ export class DungeonScene extends Phaser.Scene {
   private refreshHud(): void {
     const width = this.scale.width;
     const height = this.scale.height;
-    // Screenshot-driven readability pass: the left HUD never extends into
-    // the fixed 192px minimap at the upper right on narrow iPhone layouts.
-    const hudWidth = Math.max(110, Math.min(410, width - this.dungeon.columns * 2 - 48));
-    this.titleLabel.setFontSize(width < 800 ? 17 : 20);
-    this.healthLabel.setY(38).setFontSize(width < 520 ? 16 : 19);
-    this.objectiveLabel.setY(79).setFontSize(width < 800 ? 14 : 16)
+    const portrait = narrowPortrait(width, height);
+    const safe = viewportInsets();
+    const left = Math.max(10, safe.left + 10);
+    const top = Math.max(7, safe.top + 7);
+
+    // Canvas HUD does not inherit CSS safe-area padding. Keep all labels away
+    // from the iOS status bar / Dynamic Island / landscape camera notch.
+    const hudWidth = portrait
+      ? Math.max(120, Math.min(225, width * 0.58 - safe.left - 12))
+      : Math.max(110, Math.min(410, width - this.dungeon.columns * 2 - 48));
+    this.titleLabel.setText(portrait ? `ASHEN DEPTHS · DEPTH ${this.depth}`
+      : `ASHEN DEPTHS · DEPTH ${this.depth} · M07 / PR06`)
+      .setPosition(left, top).setFontSize(portrait ? 13 : width < 800 ? 17 : 20);
+    this.healthLabel.setPosition(left, top + (portrait ? 25 : 36))
+      .setFontSize(portrait ? 15 : width < 520 ? 16 : 19);
+    this.objectiveLabel.setPosition(left, top + (portrait ? 56 : 75))
+      .setFontSize(portrait ? 11 : width < 800 ? 14 : 16)
       .setWordWrapWidth(hudWidth);
-    this.status.setWordWrapWidth(hudWidth).setVisible(this.debug.visible);
-    this.debugButton?.setX(Math.max(8, width - 146)).setVisible(width >= 900);
-    this.skillStatusLabel?.setY(width < 600 ? 204 : Math.max(152, height - 109));
-    this.dungeonSeedLabel?.setY(Math.max(192, height - 77))
-      .setVisible(width >= 600 || this.debug.visible);
+    // Place spell status after whatever height the wrapped objective uses.
+    // In landscape, this also moves it above the bottom action controls.
+    this.skillStatusLabel.setPosition(left,
+      this.objectiveLabel.y + this.objectiveLabel.height + (portrait ? 8 : 12))
+      .setFontSize(portrait ? 11 : 15)
+      .setWordWrapWidth(hudWidth);
+    this.status.setPosition(left, top + 190)
+      .setWordWrapWidth(hudWidth).setVisible(this.debug.visible);
+    this.debugButton?.setPosition(Math.max(left, width - 146 - safe.right), top)
+      .setVisible(width >= 900);
+    this.dungeonSeedLabel.setPosition(left,
+      Math.max(top + 210, height - 77 - safe.bottom))
+      .setVisible(width >= 900 || this.debug.visible);
   }
 
   private toggleDebug(): void {
@@ -852,7 +872,17 @@ export class DungeonScene extends Phaser.Scene {
     const wardenName = WARDEN_VARIANTS[wardenForDepth(this.depth)].label.toUpperCase();
     const shortObjective = this.roomEncounters.completed ? 'WARDEN DEFEATED · EXTRACT OR DESCEND'
       : this.roomEncounters.hasEnteredDepth ? `DEFEAT THE ${wardenName}` : 'FIND THE DEEP CHAMBER';
-    this.objectiveLabel.setText(`${CHARACTER_CLASSES[this.selectedClass].name.toUpperCase()} · DEPTH ${this.depth} · ${shortObjective}\n${alive} foes · ${localHostiles} local · ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} rooms\nBag ${this.loot.bag.length}/${this.loot.capacity} · Side ${this.optionalObjectives.claimedCount}/${this.optionalObjectives.totalCount}\nGear ${this.loadout.equippedCount}/3 · A+${this.combat.bonusDamage} · S+${worn.spell + this.passiveTree.effects.spell} · Armor ${worn.armor + this.passiveTree.effects.armor}\nPassives ${this.passives.bankedPoints} secured · ${this.passives.pendingPoints} AT RISK`);
+    const portrait = narrowPortrait(this.scale.width, this.scale.height);
+    // Portrait has a narrow left information column beside the minimap.
+    // Put verbose counters in landscape and retain the essential objectives,
+    // survivability and progression in a legible five-line portrait HUD.
+    this.objectiveLabel.setText(portrait
+      ? `${shortObjective}\n${alive} foes · ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} rooms\nBag ${this.loot.bag.length}/${this.loot.capacity} · Gear ${this.loadout.equippedCount}/3\nA+${this.combat.bonusDamage} · S+${worn.spell + this.passiveTree.effects.spell} · Armor ${worn.armor + this.passiveTree.effects.armor}\nPassives ${this.passives.bankedPoints} · ${this.passives.pendingPoints} risk`
+      : `${CHARACTER_CLASSES[this.selectedClass].name.toUpperCase()} · DEPTH ${this.depth} · ${shortObjective}\n${alive} foes · ${localHostiles} local · ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} rooms\nBag ${this.loot.bag.length}/${this.loot.capacity} · Side ${this.optionalObjectives.claimedCount}/${this.optionalObjectives.totalCount}\nGear ${this.loadout.equippedCount}/3 · A+${this.combat.bonusDamage} · S+${worn.spell + this.passiveTree.effects.spell} · Armor ${worn.armor + this.passiveTree.effects.armor}\nPassives ${this.passives.bankedPoints} secured · ${this.passives.pendingPoints} AT RISK`);
+    // Objective height changes as rooms and rewards update. Reflow the skill
+    // readout instead of letting wrapped text draw over other labels.
+    this.skillStatusLabel.setY(this.objectiveLabel.y + this.objectiveLabel.height +
+      (portrait ? 8 : 12));
     document.documentElement.dataset.ashenEncounter = this.roomEncounters.completed ? 'complete' : 'explore';
     document.documentElement.dataset.ashenDepth = String(this.depth);
     document.documentElement.dataset.ashenThreatTier = threatAtDepth(this.depth);
