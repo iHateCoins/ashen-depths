@@ -1,4 +1,4 @@
-import { affixBonuses, type EquipmentSlot, type ExpeditionLoot, type LootItem } from './ExpeditionLoot';
+import { affixBonuses, itemBaseStats, type EquipmentSlot, type ExpeditionLoot, type LootItem } from './ExpeditionLoot';
 
 export interface EquipmentStats {
   /** Bonus to the 25-damage automatic basic attack. */
@@ -31,10 +31,7 @@ function emptyStats(): EquipmentStats {
  * in M04 PR01; the same immutable item objects are used when worn or carried.
  */
 export function itemBonuses(item: LootItem): EquipmentStats {
-  const stats = emptyStats();
-  if (item.slot === 'weapon') stats.attack += 4 + item.itemLevel;
-  else if (item.slot === 'armor') stats.armor += 1 + Math.floor(item.itemLevel / 2);
-  else stats.spell += 2 + Math.floor(item.itemLevel / 2);
+  const stats = itemBaseStats(item);
 
   for (const affix of item.affixes) {
     const effects = affixBonuses(affix);
@@ -44,6 +41,17 @@ export function itemBonuses(item: LootItem): EquipmentStats {
     stats.health += effects.health;
   }
   return stats;
+}
+
+/** Separate base power from random affixes in item comparison UIs. */
+export function baseBonusSummary(item: LootItem): string {
+  const base = itemBaseStats(item);
+  const values: readonly [string, number][] = [
+    ['Attack', base.attack], ['Spell', base.spell],
+    ['Armor', base.armor], ['Health', base.health],
+  ];
+  return 'Base · ' + values.filter(([, value]) => value !== 0)
+    .map(([name, value]) => `+${value} ${name}`).join(' · ');
 }
 
 function addStats(sum: EquipmentStats, next: EquipmentStats): void {
