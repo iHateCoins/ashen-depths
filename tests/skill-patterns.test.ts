@@ -91,7 +91,7 @@ describe('M05 PR05 pattern-targeted auto skills', () => {
     const storage = new MemoryStorage();
     const stash = new SecuredStash(storage);
     const allUnlocks = UNLOCK_CHOICES.map(choice => choice.id);
-    expect(allUnlocks).toHaveLength(8); // 5 active unlocks + 3 supports
+    expect(allUnlocks).toHaveLength(9); // 6 discoverable active skills (one starts per class) + 3 supports
     expect(stash.secureExpedition([], allUnlocks)).toMatchObject({ ok: true });
     const reload = new SecuredStash(storage);
     expect(reload.status).toBe('ready');
