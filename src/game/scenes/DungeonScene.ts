@@ -7,6 +7,7 @@ import { createDebugOptions, toggleDebug, type DebugOptions } from '../debug/Deb
 import { AutoCombat } from '../combat/AutoCombat';
 import { AutoSkillSystem } from '../combat/AutoSkillSystem';
 import { createEnemyAgent, ENEMY_ARCHETYPES, updateEnemyAgents, type EnemyAgent } from '../combat/EnemyAI';
+import { WARDEN_VARIANTS, wardenForDepth, eliteCombatProfile } from '../combat/DepthEncounters';
 import { PlayerHealth } from '../combat/PlayerHealth';
 import { RoomEncounterDirector } from '../combat/RoomEncounterDirector';
 import { ResultOverlay } from '../ui/ResultOverlay';
@@ -131,7 +132,7 @@ export class DungeonScene extends Phaser.Scene {
       dungeonSeedFromSearch(window.location.search, () => Math.floor(Math.random() * 0x100000000));
     this.dungeon = generateDungeon(seedForDepth(this.expeditionSeed, this.depth));
     this.grid = createDungeonNavigationGrid(this.dungeon);
-    this.roomEncounters = new RoomEncounterDirector(this.dungeon, this.grid);
+    this.roomEncounters = new RoomEncounterDirector(this.dungeon, this.grid, this.depth);
     this.optionalObjectives = new OptionalObjectiveDirector(this.dungeon, this.roomEncounters);
     this.loot = new ExpeditionLoot(this.dungeon.seed, undefined, this.depth);
     this.loadout = new EquipmentLoadout(this.loot);
@@ -229,7 +230,7 @@ export class DungeonScene extends Phaser.Scene {
       fontFamily: 'Arial, sans-serif', fontSize: '15px', color: '#f0e2c3',
       backgroundColor: '#10171bcc', padding: { x: 10, y: 8 }
     }).setScrollFactor(0).setDepth(100);
-    this.titleLabel = this.add.text(14, 3, `ASHEN DEPTHS · DEPTH ${this.depth} · M07 / PR04`, { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
+    this.titleLabel = this.add.text(14, 3, `ASHEN DEPTHS · DEPTH ${this.depth} · M07 / PR05`, { fontFamily: 'Georgia, serif', fontSize: '20px', color: '#e3c99c' })
       .setScrollFactor(0).setDepth(100).setOrigin(0, 0);
     this.status.setY(198).setVisible(false);
     this.dungeonSeedLabel = this.add.text(14, 0, `FLOOR SEED: ${this.dungeon.seed}`, {
@@ -513,28 +514,40 @@ export class DungeonScene extends Phaser.Scene {
 
   private spawnRoomEnemies(): void {
     for (const spawn of this.roomEncounters.placements) {
+      const variant = spawn.guardian ?
+        WARDEN_VARIANTS[spawn.wardenVariant ?? 'warden'] : null;
+      const healthScale = (1 + Math.min(this.depth - 1, 15) * 0.18) *
+        (spawn.elite ? 1.5 : variant?.healthMultiplier ?? 1);
+      const maxHp = Math.round(spawn.maxHp * healthScale);
       const enemy = createEnemyAgent({
         id: spawn.id,
         position: spawn.position,
-        hp: Math.round(spawn.maxHp * (1 + Math.min(this.depth - 1, 15) * 0.18)),
-        maxHp: Math.round(spawn.maxHp * (1 + Math.min(this.depth - 1, 15) * 0.18)),
-      }, spawn.kind);
+        hp: maxHp,
+        maxHp,
+      }, spawn.kind, variant?.profile ??
+        (spawn.elite ? eliteCombatProfile(spawn.kind) : undefined));
       this.enemies.push(enemy);
 
       const isBrute = enemy.kind === 'brute';
-      const radius = spawn.guardian ? 32 : isBrute ? 27 : 18;
-      const color = spawn.guardian ? 0x8c4d6b : isBrute ? 0x75455e : 0xa44949;
-      const outline = spawn.guardian ? 0xffc5dc : isBrute ? 0xe7a4cf : 0xf1a49b;
+      const isSkirmisher = enemy.kind === 'skirmisher';
+      const radius = spawn.guardian ? 32 : spawn.elite ? 29
+        : isBrute ? 27 : isSkirmisher ? 19 : 18;
+      const color = variant?.color ?? (spawn.elite ? 0x8b722d
+        : isSkirmisher ? 0x458e83 : isBrute ? 0x75455e : 0xa44949);
+      const outline = spawn.guardian ? 0xffc5dc : spawn.elite ? 0xffe39e
+        : isSkirmisher ? 0xaffff2 : isBrute ? 0xe7a4cf : 0xf1a49b;
       const body = this.add.circle(0, 0, radius, color).setStrokeStyle(3, outline);
       const bar = this.add.rectangle(0, -radius - 13, spawn.guardian ? 70 : isBrute ? 55 : 40,
         5, 0x7eb88e).setOrigin(0.5);
       const children: Phaser.GameObjects.GameObject[] = [body, bar];
-      if (spawn.guardian || isBrute) {
+      if (spawn.guardian || isBrute || isSkirmisher || spawn.elite) {
         children.push(this.add.text(0, radius > 25 ? 10 : 6,
-          spawn.guardian ? 'WARDEN' : 'BRUTE', {
+          variant ? variant.label.toUpperCase() : spawn.elite ? 'ELITE'
+            : isBrute ? 'BRUTE' : 'SKIRMISHER', {
             fontFamily: 'Arial, sans-serif',
             fontSize: spawn.guardian ? '12px' : '11px',
-            color: spawn.guardian ? '#fff0b9' : '#ffe0ef',
+            color: spawn.guardian ? '#fff0b9' : spawn.elite ? '#ffeaa2'
+              : isSkirmisher ? '#bbfff0' : '#ffe0ef',
           }).setOrigin(0.5));
       }
       if (spawn.guardian) {
@@ -833,11 +846,17 @@ export class DungeonScene extends Phaser.Scene {
     const localHostiles = this.roomEncounters.roomHostiles(room, this.enemies);
     const alive = this.enemies.filter(enemy => enemy.hp > 0).length;
     const worn = this.loadout.stats;
+    const wardenName = WARDEN_VARIANTS[wardenForDepth(this.depth)].label.toUpperCase();
     const shortObjective = this.roomEncounters.completed ? 'WARDEN DEFEATED · EXTRACT OR DESCEND'
-      : this.roomEncounters.hasEnteredDepth ? 'DEFEAT THE WARDEN' : 'FIND THE DEEP CHAMBER';
+      : this.roomEncounters.hasEnteredDepth ? `DEFEAT THE ${wardenName}` : 'FIND THE DEEP CHAMBER';
     this.objectiveLabel.setText(`${CHARACTER_CLASSES[this.selectedClass].name.toUpperCase()} · DEPTH ${this.depth} · ${shortObjective}\n${alive} foes · ${localHostiles} local · ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} rooms\nBag ${this.loot.bag.length}/${this.loot.capacity} · Side ${this.optionalObjectives.claimedCount}/${this.optionalObjectives.totalCount}\nGear ${this.loadout.equippedCount}/3 · A+${this.combat.bonusDamage} · S+${worn.spell + this.passiveTree.effects.spell} · Armor ${worn.armor + this.passiveTree.effects.armor}\nPassives ${this.passives.bankedPoints} secured · ${this.passives.pendingPoints} AT RISK`);
     document.documentElement.dataset.ashenEncounter = this.roomEncounters.completed ? 'complete' : 'explore';
     document.documentElement.dataset.ashenDepth = String(this.depth);
+    document.documentElement.dataset.ashenWardenVariant = wardenForDepth(this.depth);
+    document.documentElement.dataset.ashenEliteCount =
+      String(this.roomEncounters.placements.filter(spawn => spawn.elite).length);
+    document.documentElement.dataset.ashenSkirmisherCount =
+      String(this.roomEncounters.placements.filter(spawn => spawn.kind === 'skirmisher').length);
     document.documentElement.dataset.ashenClass = this.selectedClass;
     document.documentElement.dataset.ashenPassiveSpent = String(this.passiveTree.spent);
     document.documentElement.dataset.ashenPassiveAvailable = String(this.passiveTree.available);
@@ -876,7 +895,7 @@ export class DungeonScene extends Phaser.Scene {
     this.attackWarnings.clear();
     for (const enemy of this.enemies) {
       if (enemy.hp <= 0 || enemy.phase !== 'windup' || !enemy.attackTarget) continue;
-      const stats = ENEMY_ARCHETYPES[enemy.kind];
+      const stats = enemy.profile ?? ENEMY_ARCHETYPES[enemy.kind];
       const progress = Phaser.Math.Clamp(1 - enemy.phaseRemaining / stats.windupSeconds, 0, 1);
       const { x, y } = enemy.attackTarget;
       this.attackWarnings.fillStyle(enemy.kind === 'brute' ? 0xd85486 : 0xe66f4e, 0.16 + progress * 0.3);
@@ -911,6 +930,7 @@ export class DungeonScene extends Phaser.Scene {
         const placement = this.roomEncounters.placements.find(spawn => spawn.id === enemy.id);
         const drop = this.loot.dropForEnemy(
           enemy.id, enemy.kind, placement?.guardian ?? false, enemy.position,
+          placement?.elite ?? false,
         );
         if (drop) this.refreshGroundVisuals();
       }
