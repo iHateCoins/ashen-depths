@@ -4,6 +4,14 @@ import type { EnemyKind } from '../combat/EnemyAI';
 export type ItemRarity = 'common' | 'magic' | 'rare';
 export type EquipmentSlot = 'weapon' | 'armor' | 'charm';
 
+/** Frozen at drop time: already-secured equipment never changes after balancing. */
+export interface ItemBaseStats {
+  attack: number;
+  spell: number;
+  armor: number;
+  health: number;
+}
+
 export type ItemAffixId =
   | 'sharp' | 'sturdy' | 'ember' | 'vital'
   | 'battlemage' | 'raider' | 'bastion' | 'spellward';
@@ -65,6 +73,8 @@ export interface LootItem {
   id: string;
   name: string;
   baseName: string;
+  /** Missing on legacy equipment; apply the original slot+level formula instead. */
+  baseStats?: ItemBaseStats;
   rarity: ItemRarity;
   slot: EquipmentSlot;
   itemLevel: number;
@@ -82,11 +92,65 @@ export interface PickupResult {
 export const EXPEDITION_BAG_CAPACITY = 24;
 export const PICKUP_RADIUS = 84;
 
-const BASES: Readonly<Record<EquipmentSlot, readonly string[]>> = {
-  weapon: ['Rustbound Sword', 'Iron Cleaver', 'Ashwood Staff', 'Spiked Mace'],
-  armor: ['Traveler Coat', 'Ironmail Vest', 'Tattered Mantle', 'Scavenger Armor'],
-  charm: ['Ember Idol', 'Bone Pendant', 'Moonstone Sigil', 'Onyx Talisman'],
+/** Base families have their own stat identity, independent of random affixes. */
+export interface ItemBaseDefinition {
+  readonly name: string;
+  readonly minLevel: number;
+  readonly offset: Readonly<Partial<ItemBaseStats>>;
+}
+
+export const ITEM_BASES: Readonly<Record<EquipmentSlot, readonly ItemBaseDefinition[]>> = {
+  weapon: [
+    { name: 'Rustbound Sword', minLevel: 1, offset: { attack: 2 } },
+    { name: 'Iron Cleaver', minLevel: 1, offset: { attack: 3 } },
+    { name: 'Ashwood Staff', minLevel: 1, offset: { attack: -4, spell: 5 } },
+    { name: 'Spiked Mace', minLevel: 1, offset: { attack: 1, armor: 2 } },
+    { name: 'Runeblade', minLevel: 8, offset: { attack: 4, spell: 4 } },
+    { name: 'Siegebreaker', minLevel: 8, offset: { attack: 7, armor: 2 } },
+  ],
+  armor: [
+    { name: 'Traveler Coat', minLevel: 1, offset: { armor: -1, health: 5 } },
+    { name: 'Ironmail Vest', minLevel: 1, offset: { armor: 2 } },
+    { name: 'Tattered Mantle', minLevel: 1, offset: { armor: -1, spell: 4 } },
+    { name: 'Scavenger Armor', minLevel: 1, offset: { armor: 1, attack: 2 } },
+    { name: 'Warden Carapace', minLevel: 8, offset: { armor: 5, health: 6 } },
+    { name: 'Runesilk Robes', minLevel: 8, offset: { armor: -2, spell: 8 } },
+  ],
+  charm: [
+    { name: 'Ember Idol', minLevel: 1, offset: { spell: 3 } },
+    { name: 'Bone Pendant', minLevel: 1, offset: { spell: -2, health: 6 } },
+    { name: 'Moonstone Sigil', minLevel: 1, offset: { spell: 1, armor: 2 } },
+    { name: 'Onyx Talisman', minLevel: 1, offset: { spell: -1, attack: 4 } },
+    { name: 'Crown of Cinders', minLevel: 8, offset: { spell: 7, health: 3 } },
+    { name: 'Vanguard Seal', minLevel: 8, offset: { spell: -1, attack: 6, armor: 2 } },
+  ],
 };
+
+/** Original M04 formula used for every legacy item without a base snapshot. */
+export function legacyBaseStats(slot: EquipmentSlot, itemLevel: number): ItemBaseStats {
+  return {
+    attack: slot === 'weapon' ? 4 + itemLevel : 0,
+    spell: slot === 'charm' ? 2 + Math.floor(itemLevel / 2) : 0,
+    armor: slot === 'armor' ? 1 + Math.floor(itemLevel / 2) : 0,
+    health: 0,
+  };
+}
+
+export function rollBaseStats(
+  slot: EquipmentSlot, itemLevel: number, base: ItemBaseDefinition,
+): ItemBaseStats {
+  const legacy = legacyBaseStats(slot, itemLevel);
+  return {
+    attack: Math.max(0, legacy.attack + (base.offset.attack ?? 0)),
+    spell: Math.max(0, legacy.spell + (base.offset.spell ?? 0)),
+    armor: Math.max(0, legacy.armor + (base.offset.armor ?? 0)),
+    health: Math.max(0, legacy.health + (base.offset.health ?? 0)),
+  };
+}
+
+export function itemBaseStats(item: LootItem): ItemBaseStats {
+  return item.baseStats ? { ...item.baseStats } : legacyBaseStats(item.slot, item.itemLevel);
+}
 const PREFIXES: Readonly<Record<ItemRarity, string>> = {
   common: '', magic: 'Enchanted', rare: 'Forgotten',
 };
@@ -120,10 +184,13 @@ export function rollEnemyLoot(
       lootHash(dungeonSeed, enemyId, 23) % 100 < 52 ? 'magic' : 'common');
   const slots: readonly EquipmentSlot[] = ['weapon', 'armor', 'charm'];
   const slot = slots[lootHash(dungeonSeed, enemyId, 2) % slots.length];
-  const baseNames = BASES[slot];
-  const baseName = baseNames[lootHash(dungeonSeed, enemyId, 3) % baseNames.length];
-  const affixCount = rarity === 'rare' ? 2 : rarity === 'magic' ? 1 : 0;
   const itemLevel = guardian ? 8 : kind === 'brute' ? 5 : 2 + (lootHash(dungeonSeed, enemyId, 71) % 3);
+  // Normal enemies see starter bases; high-level bosses can reveal specialist bases.
+  const eligibleBases = ITEM_BASES[slot].filter(base => base.minLevel <= itemLevel);
+  const base = eligibleBases[lootHash(dungeonSeed, enemyId, 3) % eligibleBases.length];
+  const baseName = base.name;
+  const baseStats = rollBaseStats(slot, itemLevel, base);
+  const affixCount = rarity === 'rare' ? 2 : rarity === 'magic' ? 1 : 0;
   const available = [...AFFIX_POOLS[slot]];
   const affixes: ItemAffix[] = [];
   for (let index = 0; index < affixCount; index++) {
@@ -141,6 +208,7 @@ export function rollEnemyLoot(
   return {
     id: `item-${dungeonSeed >>> 0}-${enemyId}`,
     baseName,
+    baseStats,
     name: PREFIXES[rarity] ? `${PREFIXES[rarity]} ${baseName}` : baseName,
     rarity,
     slot,
