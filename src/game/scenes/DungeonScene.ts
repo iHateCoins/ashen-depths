@@ -30,6 +30,7 @@ import { canDescend, seedForDepth } from '../dungeon/DepthProgression';
 import { SkillRewardUI } from '../ui/SkillRewardUI';
 import { ClassSelectionUI } from '../ui/ClassSelectionUI';
 import { CHARACTER_CLASSES, type CharacterClassId } from '../character/CharacterClasses';
+import { PassiveMilestoneProgress } from '../character/PassiveMilestones';
 import type { EquipmentSlot, LootItem } from '../loot/ExpeditionLoot';
 
 /** In-memory handoff only. Nothing here is secured without extraction. */
@@ -45,6 +46,7 @@ interface DescentTransfer {
   skills: AutoSkillSystem;
   progression: SkillProgression;
   classId: CharacterClassId;
+  passives: PassiveMilestoneProgress;
 }
 
 const WORLD_WIDTH = 2304;
@@ -98,6 +100,7 @@ export class DungeonScene extends Phaser.Scene {
   private rewardUi!: SkillRewardUI;
   private classUi!: ClassSelectionUI;
   private selectedClass: CharacterClassId = 'arcanist';
+  private passives!: PassiveMilestoneProgress;
   private extractionOverlay!: ResultOverlay;
   private lootUi!: LootUI;
   private groundVisuals = new Map<string, Phaser.GameObjects.Container>();
@@ -142,6 +145,9 @@ export class DungeonScene extends Phaser.Scene {
     this.selectedClass = carry?.classId ?? this.securedStash.preferredClass;
     this.progression = carry?.progression ??
       new SkillProgression(this.securedStash.unlockedIds, this.selectedClass);
+    this.passives = carry?.passives ?? new PassiveMilestoneProgress(
+      this.selectedClass, this.securedStash.passiveDepthsFor(this.selectedClass),
+    );
     this.extraction = new ExtractionDirector(this.dungeon);
     // Only the initial entrance camp permits withdrawals and class/loadout edits.
     this.campAvailable = !carry;
@@ -257,6 +263,7 @@ export class DungeonScene extends Phaser.Scene {
       () => this.selectedClass,
       () => this.canChangeClass(),
       id => this.changeClass(id),
+      () => ({ banked: this.passives.bankedPoints, pending: this.passives.pendingPoints }),
     );
     this.rewardUi = new SkillRewardUI(this.progression,
       () => !this.health.defeated && !this.finalized && !this.lootUi.isOpen && !this.stashUi.isOpen && !this.skillUi.isOpen,
@@ -632,12 +639,16 @@ export class DungeonScene extends Phaser.Scene {
       return false;
     }
     this.selectedClass = id;
+    if (!this.passives.selectClass(id, this.securedStash.passiveDepthsFor(id))) {
+      throw new Error('Cannot load class passive milestones');
+    }
     const cls = CHARACTER_CLASSES[id];
     this.combat = new AutoCombat(cls.basicRange, cls.basicDamage, cls.basicInterval);
     this.skills.setEquipped([cls.startingSkill]);
     this.recalculateEquipment();
     this.healthLabel.setText(`HP: ${this.health.hp} / ${this.health.maxHp}`);
     this.updateObjectiveStatus();
+    this.classUi.refresh();
     return true;
   }
 
@@ -659,6 +670,7 @@ export class DungeonScene extends Phaser.Scene {
       skills: this.skills,
       progression: this.progression,
       classId: this.selectedClass,
+      passives: this.passives,
     };
     this.cancelExtraction();
     this.scene.restart(transfer);
@@ -676,6 +688,7 @@ export class DungeonScene extends Phaser.Scene {
     ];
     const result = this.securedStash.secureExpedition(
       items, this.progression.pendingUnlocks, this.progression.pendingForgeEmbers,
+      { classId: this.selectedClass, depths: this.passives.pendingDepths },
     );
     if (!result.ok) {
       const message = result.reason === 'storage-full'
@@ -711,7 +724,7 @@ export class DungeonScene extends Phaser.Scene {
     this.waypoints = [];
     this.marker.setVisible(false);
     const lostChoices = this.progression.choicesRemaining.length;
-    const message = `Depth ${this.depth} · ${result.saved} item${result.saved === 1 ? '' : 's'} secured to this device's stash. ${this.progression.pendingUnlocks.length} new skill/support unlocks · ${this.progression.pendingForgeEmbers} Forge Embers secured. ${lostChoices > 0 ? `${lostChoices} unclaimed discovery reward${lostChoices === 1 ? '' : 's'} forfeited. ` : ''}${this.securedStash.count} items stored. New expedition awaits.`;
+    const message = `Depth ${this.depth} · ${this.passives.pendingPoints} passive point${this.passives.pendingPoints === 1 ? '' : 's'} secured for ${CHARACTER_CLASSES[this.selectedClass].name} · ${result.saved} item${result.saved === 1 ? '' : 's'} secured to this device's stash. ${this.progression.pendingUnlocks.length} new skill/support unlocks · ${this.progression.pendingForgeEmbers} Forge Embers secured. ${lostChoices > 0 ? `${lostChoices} unclaimed discovery reward${lostChoices === 1 ? '' : 's'} forfeited. ` : ''}${this.securedStash.count} items stored. New expedition awaits.`;
     if (mode === 'early') this.extractionOverlay.show(message);
     else this.victoryOverlay.show(message);
   }
@@ -788,10 +801,13 @@ export class DungeonScene extends Phaser.Scene {
     const worn = this.loadout.stats;
     const shortObjective = this.roomEncounters.completed ? 'WARDEN DEFEATED · EXTRACT OR DESCEND'
       : this.roomEncounters.hasEnteredDepth ? 'DEFEAT THE WARDEN' : 'FIND THE DEEP CHAMBER';
-    this.objectiveLabel.setText(`${CHARACTER_CLASSES[this.selectedClass].name.toUpperCase()} · DEPTH ${this.depth} · ${shortObjective}\n${alive} foes · ${localHostiles} local · ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} rooms\nBag ${this.loot.bag.length}/${this.loot.capacity} · Side ${this.optionalObjectives.claimedCount}/${this.optionalObjectives.totalCount}\nGear ${this.loadout.equippedCount}/3 · A+${this.combat.bonusDamage} · S+${worn.spell} · Armor ${worn.armor}`);
+    this.objectiveLabel.setText(`${CHARACTER_CLASSES[this.selectedClass].name.toUpperCase()} · DEPTH ${this.depth} · ${shortObjective}\n${alive} foes · ${localHostiles} local · ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} rooms\nBag ${this.loot.bag.length}/${this.loot.capacity} · Side ${this.optionalObjectives.claimedCount}/${this.optionalObjectives.totalCount}\nGear ${this.loadout.equippedCount}/3 · A+${this.combat.bonusDamage} · S+${worn.spell} · Armor ${worn.armor}\nPassives ${this.passives.bankedPoints} secured · ${this.passives.pendingPoints} AT RISK`);
     document.documentElement.dataset.ashenEncounter = this.roomEncounters.completed ? 'complete' : 'explore';
     document.documentElement.dataset.ashenDepth = String(this.depth);
     document.documentElement.dataset.ashenClass = this.selectedClass;
+    document.documentElement.dataset.ashenPassiveSecured = String(this.passives.bankedPoints);
+    document.documentElement.dataset.ashenPassivePending = String(this.passives.pendingPoints);
+    this.classUi.updatePassiveStatus();
     document.documentElement.dataset.ashenNextDepthUnlocked = String(
       canDescend(this.depth, this.roomEncounters.completed, this.health.defeated));
     document.documentElement.dataset.ashenGuardianAlive = String(guardianAlive);
@@ -991,6 +1007,9 @@ export class DungeonScene extends Phaser.Scene {
       // Winning is not the same as extracting. Let the player pick up Warden
       // loot and inspect the bag before deliberately finishing the run.
       this.showCombatText(this.movement.position, 'WARDEN DEFEATED', '#f5d7a4');
+      if (this.passives.defeatWarden(this.depth, this.roomEncounters.completed)) {
+        this.showCombatText(this.movement.position, '+1 PASSIVE POINT · UNSECURED', '#b7efc6');
+      }
       // Defeating the Warden unlocks Finish but does not close optional
       // objectives or early extraction. Both remain until an exit is saved.
       this.lootUi.enableFinish(() => this.secureAndFinish());
