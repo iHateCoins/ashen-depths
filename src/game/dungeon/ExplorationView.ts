@@ -4,6 +4,7 @@ import type { DungeonLayout } from './DungeonGenerator';
 import type { ExplorationTracker } from './ExplorationTracker';
 import type { OptionalObjectiveDirector } from './OptionalObjectiveDirector';
 import type { ExtractionDirector } from './ExtractionDirector';
+import { narrowPortrait, viewportInsets } from '../ui/ViewportLayout';
 
 /** Presentation-only layer: the tracker owns all gameplay/exploration state. */
 export class ExplorationView {
@@ -11,8 +12,7 @@ export class ExplorationView {
   private readonly map: Phaser.GameObjects.Graphics;
   private readonly heading: Phaser.GameObjects.Text;
   private readonly mapHitArea: Phaser.GameObjects.Zone;
-  private readonly tilePixels = 2;
-  private readonly mapY = 62;
+  private readonly landscapeTilePixels = 2;
   private readonly onResize = (): void => this.redrawMap(this.lastPlayer);
   private lastPlayer: Point;
 
@@ -37,8 +37,8 @@ export class ExplorationView {
       padding: { x: 4, y: 3 },
     }).setScrollFactor(0).setDepth(116);
     // Prevent tapping the minimap from inadvertently moving in the game world.
-    this.mapHitArea = scene.add.zone(0, 0, layout.columns * this.tilePixels + 10,
-      layout.rows * this.tilePixels + 10).setScrollFactor(0).setDepth(117).setInteractive();
+    this.mapHitArea = scene.add.zone(0, 0, layout.columns * this.landscapeTilePixels + 10,
+      layout.rows * this.landscapeTilePixels + 10).setScrollFactor(0).setDepth(117).setInteractive();
     this.mapHitArea.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: number,
       _localY: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
     scene.scale.on(Phaser.Scale.Events.RESIZE, this.onResize);
@@ -65,12 +65,19 @@ export class ExplorationView {
   }
 
   private redrawMap(player: Point): void {
-    const pixel = this.tilePixels;
+    const width = this.scene.scale.width;
+    const portrait = narrowPortrait(width, this.scene.scale.height);
+    const safe = viewportInsets();
+    // A smaller portrait minimap leaves a dedicated readable text column.
+    // The input-blocking hit region always follows the actual drawn map.
+    const pixel = portrait ? 1.2 : this.landscapeTilePixels;
     const mapWidth = this.layout.columns * pixel;
     const mapHeight = this.layout.rows * pixel;
-    const left = Math.max(8, this.scene.scale.width - mapWidth - 12);
-    const top = this.mapY;
-    this.mapHitArea.setPosition(left + mapWidth / 2, top + mapHeight / 2);
+    const left = Math.max(8 + safe.left, width - mapWidth - 12 - safe.right);
+    const top = Math.max(62, safe.top + (portrait ? 69 : 60));
+    this.mapHitArea.setSize(mapWidth + 10, mapHeight + 10)
+      .setPosition(left + mapWidth / 2, top + mapHeight / 2);
+    this.heading.setFontSize(portrait ? 9 : 12);
     this.map.clear()
       .fillStyle(0x080e11, 0.92).fillRoundedRect(left - 5, top - 5, mapWidth + 10, mapHeight + 10, 5)
       .lineStyle(1, 0x927a5b, 0.7).strokeRoundedRect(left - 5, top - 5, mapWidth + 10, mapHeight + 10, 5);
