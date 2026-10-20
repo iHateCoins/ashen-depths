@@ -111,6 +111,7 @@ export class DungeonScene extends Phaser.Scene {
   private victoryOverlay!: ResultOverlay;
   private kills = 0;
   private finalized = false;
+  private defeatPresented = false;
   private depth = 1;
   private expeditionSeed = 0;
   private incoming: DescentTransfer | null = null;
@@ -172,6 +173,7 @@ export class DungeonScene extends Phaser.Scene {
     if (carry) this.health.hp = Math.max(1, Math.min(this.health.maxHp, carry.hp));
     this.kills = 0;
     this.finalized = false;
+    this.defeatPresented = false;
     this.enemies = [];
     this.enemyVisuals.clear();
     this.waypoints = [];
@@ -941,7 +943,29 @@ export class DungeonScene extends Phaser.Scene {
     }
   }
 
+  /** A lethal hit must always show defeat, including asynchronous damage. */
+  private presentDefeat(): void {
+    if (!this.health.defeated || this.defeatPresented || this.finalized) return;
+    this.defeatPresented = true;
+    this.cancelExtraction();
+    this.movement.stop();
+    this.waypoints = [];
+    this.marker.setVisible(false);
+    this.lootUi.hideForResult();
+    this.stashUi.hideForResult();
+    this.skillUi.hideForResult();
+    this.rewardUi.hideForResult();
+    this.classUi.hideForResult();
+    this.extractionUi.hide();
+    this.interactionDock.hideForResult();
+    this.defeatOverlay.show();
+  }
+
   update(_time: number, delta: number): void {
+    // Defeat might originate outside a contact-strike frame (future hazards,
+    // scripted bosses or asynchronous state transitions). Never leave a dead
+    // character on a frozen dungeon without the restart action.
+    if (this.health.defeated) { this.presentDefeat(); return; }
     if (this.extraction.phase === 'channeling' &&
         (this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen ||
          this.rewardUi.isOpen || this.classUi.isOpen)) this.cancelExtraction();
@@ -1086,16 +1110,7 @@ export class DungeonScene extends Phaser.Scene {
     this.refreshOptionalPrompt();
     this.refreshLootPrompt();
     this.refreshExtractionPrompt();
-    if(this.health.defeated) {
-      this.movement.stop();this.waypoints=[];this.marker.setVisible(false);
-      this.lootUi.hideForResult();
-      this.stashUi.hideForResult();
-      this.skillUi.hideForResult();
-      this.rewardUi.hideForResult();
-      this.extractionUi.hide();
-      this.interactionDock.hideForResult();
-      this.defeatOverlay.show();
-    }
+    if (this.health.defeated) this.presentDefeat();
     if (this.debug.visible) this.redrawRoute();
     if (!this.movement.destination && !this.waypoints.length) this.marker.setVisible(false);
     this.status.setText(`Tap/click to explore · Wheel or +/- to zoom · Zoom ${this.zoom.toFixed(1)}x\nPosition: ${Math.round(x)}, ${Math.round(y)} · ${state.motion} · Kills: ${this.kills} · Rooms ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} · Seed: ${this.dungeon.seed}`);
