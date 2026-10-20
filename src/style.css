@@ -809,3 +809,33 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
   line-height:1.4;
 }
 .ashen-class-toggle {max-width:min(65vw,400px);white-space:normal;text-align:left;}
+
+/* M07 PR04 — three compact, branch-connected passive paths. Scrolls vertically
+   within the established native class modal on iPhone and desktop. */
+.ashen-passive-tree {margin-top:15px;border-top:1px solid #64716d;padding-top:12px;}
+.ashen-passive-tree h3{font:22px Georgia,serif;margin:0 0 6px;color:#f0deb9;}
+.ashen-passive-tree > p{margin:5px 0 13px;color:#c7d4cf;}
+.ashen-passive-branches{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;}
+.ashen-passive-lane{min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:10px;}
+.ashen-passive-lane h4{margin:0;text-align:center;color:#e0c89c;font:600 14px Arial,sans-serif;}
+.ashen-passive-node{
+  position:relative;display:flex;flex-direction:column;gap:5px;text-align:left;
+  width:100%;min-height:97px;box-sizing:border-box;padding:9px;
+  border:1px solid #82948f;border-radius:8px;
+  background:#303d43;color:#f0eadc;font:13px/1.3 Arial,sans-serif;
+  cursor:pointer;touch-action:manipulation;pointer-events:auto;
+}
+.ashen-passive-node strong{font-size:13px;color:#ffe0ad;}
+.ashen-passive-node span{color:#d7dad5;}
+.ashen-passive-node .ashen-passive-node-status{font-size:10px;letter-spacing:.05em;font-weight:700;color:#a9e2c0;margin-top:auto;}
+.ashen-passive-node[data-allocated="true"]{border-color:#8fc6a6;background:#29493b;}
+.ashen-passive-node:disabled{cursor:default;opacity:.65;}
+.ashen-passive-node[data-allocated="true"]:disabled{opacity:1;}
+.ashen-passive-node:focus-visible{outline:3px solid #ffde97;outline-offset:2px;}
+.ashen-passive-effects{background:#28382f;border-radius:6px;padding:9px;color:#c0e2c8!important;}
+@media(max-width:600px){
+  .ashen-passive-branches{grid-template-columns:1fr;}
+  .ashen-passive-lane{gap:7px;padding-bottom:10px;border-bottom:1px solid #4a5c57;}
+  .ashen-passive-lane h4{text-align:left;}
+  .ashen-passive-node{min-height:64px;padding:8px;}
+}
