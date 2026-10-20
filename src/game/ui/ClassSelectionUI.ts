@@ -6,12 +6,14 @@ export class ClassSelectionUI {
   private readonly overlay: HTMLElement;
   private readonly cards: HTMLElement;
   private readonly warning: HTMLElement;
+  private readonly passiveSummary: HTMLElement;
   private open = false;
 
   constructor(
     private readonly selected: () => CharacterClassId,
     private readonly canChange: () => boolean,
     private readonly onChoose: (id: CharacterClassId) => boolean,
+    private readonly passiveCounts: () => { banked: number; pending: number },
   ) {
     const toggle = document.createElement('button');
     toggle.id = 'ashen-class-toggle';
@@ -43,26 +45,36 @@ export class ClassSelectionUI {
     header.append(title, close);
     const intro = document.createElement('p');
     intro.textContent = 'Class determines your starting skill, health and basic attack. Both classes can develop attack, spell or hybrid equipment builds. Change only at the entrance before taking any loot; your selection is saved on this device.';
+    const passiveSummary = document.createElement('p');
+    passiveSummary.id = 'ashen-passive-summary';
+    passiveSummary.className = 'ashen-class-passive-summary';
     const cards = document.createElement('div');
     cards.className = 'ashen-class-cards';
     const warning = document.createElement('p');
     warning.className = 'ashen-class-warning';
     warning.setAttribute('role', 'status');
     warning.hidden = true;
-    panel.append(header, intro, cards, warning);
+    panel.append(header, intro, passiveSummary, cards, warning);
     overlay.append(panel);
     document.body.append(toggle, overlay);
     this.toggle = toggle;
     this.overlay = overlay;
     this.cards = cards;
     this.warning = warning;
+    this.passiveSummary = passiveSummary;
     this.refresh();
   }
 
   get isOpen(): boolean { return this.open; }
 
+  updatePassiveStatus(): void {
+    const { banked, pending } = this.passiveCounts();
+    this.toggle.textContent = `CLASS: ${CHARACTER_CLASSES[this.selected()].name.toUpperCase()} · PASSIVES ${banked}${pending ? ` (+${pending} RISK)` : ''}`;
+    this.passiveSummary.textContent = `Passive points: ${banked} secured · ${pending} unsecured. Defeat the Warden at new even-numbered depths (2, 4, 6…) and extract to bank them. Passive allocation arrives in the next milestone.`;
+  }
+
   refresh(): void {
-    this.toggle.textContent = `CLASS: ${CHARACTER_CLASSES[this.selected()].name.toUpperCase()}`;
+    this.updatePassiveStatus();
     if (!this.open) return;
     this.cards.replaceChildren();
     const current = this.selected();
