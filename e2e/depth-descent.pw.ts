@@ -100,6 +100,15 @@ test('only a defeated Warden unlocks descent, which retains risky loot, HP and d
   await tap(page,result.getByRole('button',{name:'NEW EXPEDITION'}));
   await expect.poll(()=>page.evaluate(()=>document.documentElement.dataset.ashenDepth)).toBe('1');
   await expect(page.locator('#ashen-stash-toggle')).toContainText('STASH 1');
+  // New expedition may load secured gear at camp, but must not inherit the
+  // previous run's risky bag, missing HP or pending Ember choices.
+  const fresh = await page.evaluate(() => {
+    const scene = (window as any).__ashenE2eGame.scene.getScene('DungeonScene') as any;
+    return {depth: scene.depth, hp: scene.health.hp,
+      bag: scene.loot.bag.length, embers: scene.progression.pendingForgeEmbers,
+      camp: scene.campAvailable};
+  });
+  expect(fresh).toEqual({depth: 1, hp: 100, bag: 0, embers: 0, camp: true});
   expect(errors).toEqual([]);
 });
 
@@ -111,8 +120,25 @@ test('restart without extraction resets the depth and does not secure risky loot
   await expect.poll(()=>page.evaluate(()=>document.documentElement.dataset.ashenDepth)).toBe('2');
   await page.evaluate(()=>{
     const scene=(window as any).__ashenE2eGame.scene.getScene('DungeonScene') as any;
+    scene.loot.bag.push({
+      id:'abandoned-depth2-weapon',name:'Unsecured Iron Cleaver',
+      baseName:'Iron Cleaver',rarity:'magic',slot:'weapon',itemLevel:5,
+      affixes:[{id:'sharp',label:'Attack Power',value:5}],
+    });
+    scene.health.damage(30);
+    scene.progression.offer('cache:2');
+    scene.progression.choose('cache:2','forge:ember');
+    // Exercise bare Phaser restart() as well as the player-facing New Expedition
+    // button tested above: Phaser may replay stale scene init data here.
     scene.scene.restart();
   });
   await expect.poll(()=>page.evaluate(()=>document.documentElement.dataset.ashenDepth)).toBe('1');
+  const fresh = await page.evaluate(()=>{
+    const scene=(window as any).__ashenE2eGame.scene.getScene('DungeonScene') as any;
+    return {depth:scene.depth,seed:scene.dungeon.seed,hp:scene.health.hp,
+      bag:scene.loot.bag.length,embers:scene.progression.pendingForgeEmbers,
+      camp:scene.campAvailable};
+  });
+  expect(fresh).toEqual({depth:1,seed:42,hp:100,bag:0,embers:0,camp:true});
   expect(await page.evaluate(()=>localStorage.getItem('ashen-depths-stash-v1'))).toBeNull();
 });
