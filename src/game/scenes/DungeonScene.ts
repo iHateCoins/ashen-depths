@@ -738,7 +738,8 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   private canChangeClass(): boolean {
-    return this.depth === 1 && this.campAvailable && !this.finalized &&
+    return (document.documentElement.dataset.ashenHideoutRules !== 'true' || !!this.preparationUi?.isOpen) &&
+      this.depth === 1 && this.campAvailable && !this.finalized &&
       !this.health.defeated && this.kills === 0 && this.loot.bag.length === 0 &&
       this.loadout.equippedCount === 0 && !this.lootUi.isOpen &&
       !this.stashUi.isOpen && !this.skillUi.isOpen && !this.rewardUi.isOpen;
