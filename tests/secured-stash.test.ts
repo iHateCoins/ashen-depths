@@ -27,6 +27,24 @@ class MemoryStorage implements StashStorage {
 }
 
 describe('secured stash persistence and transactions', () => {
+  it('persists equipped ownership through extraction and reload without duplicating items', () => {
+    const storage = new MemoryStorage();
+    const stash = new SecuredStash(storage);
+    expect(stash.secureExpedition([item('weapon'), item('armor', 'armor')], [], 0, undefined, 1, ['weapon']))
+      .toMatchObject({ ok: true, saved: 2 });
+    expect(stash.equippedItems).toHaveLength(1);
+    expect(stash.equippedItems[0].slot).toBe('weapon');
+    expect(new SecuredStash(storage).equippedItems).toEqual(stash.equippedItems);
+    expect(stash.secureExpedition([item('next', 'armor')], [], 0, undefined, 2, ['next']))
+      .toMatchObject({ ok: true });
+    expect(stash.equippedItems.map(gear => gear.slot)).toEqual(['armor']);
+    expect(stash.items).toHaveLength(3);
+    const wornId = stash.equippedItems[0].id;
+    expect(stash.withdraw(wornId)?.slot).toBe('armor');
+    expect(stash.equippedItems).toHaveLength(0);
+    expect(new SecuredStash(storage).equippedItems).toHaveLength(0);
+  });
+
   it('keeps skill socket capacities separate and bounds zero through six', () => {
     const storage = new MemoryStorage();
     const stash = new SecuredStash(storage);
