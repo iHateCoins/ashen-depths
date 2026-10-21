@@ -40,7 +40,7 @@ export class ClassSelectionUI {
     panel.className = 'ashen-class-panel';
     const header = document.createElement('header');
     const title = document.createElement('h2');
-    title.textContent = 'Choose your path';
+    title.textContent = 'Your Character & Passives';
     const close = document.createElement('button');
     close.type = 'button';
     close.className = 'ashen-class-close';
@@ -48,7 +48,7 @@ export class ClassSelectionUI {
     close.addEventListener('click', () => this.hide());
     header.append(title, close);
     const intro = document.createElement('p');
-    intro.textContent = 'Class determines your starting skill, health and basic attack. Both classes can develop attack, spell or hybrid equipment builds. Change only at the entrance before taking any loot; your selection is saved on this device.';
+    intro.textContent = 'Your class is permanent for this character. The hideout lets you customize skills, equipment and passive abilities without changing class.';
     const passiveSummary = document.createElement('p');
     passiveSummary.id = 'ashen-passive-summary';
     passiveSummary.className = 'ashen-class-passive-summary';
@@ -80,7 +80,7 @@ export class ClassSelectionUI {
     const { banked, pending } = this.passiveCounts();
     this.toggle.textContent = `CLASS: ${CHARACTER_CLASSES[this.selected()].name.toUpperCase()} · PASSIVES ${banked}${pending ? ` (+${pending} RISK)` : ''}`;
     const state=this.allocationState();
-    this.passiveSummary.textContent = `Passive points: ${banked} secured · ${pending} unsecured · ${state.selected.length} spent · ${state.available} available. Defeat the Warden at new even-numbered depths (2, 4, 6…) and extract to bank them. Only secured points can be spent at the initial camp.`;
+    this.passiveSummary.textContent = `Passive points: ${banked} secured · ${pending} unsecured · ${state.selected.length} spent · ${state.available} available. Defeat the Warden at new even-numbered depths (2, 4, 6…) and extract to bank them. Only secured points can be spent in the hideout.`;
   }
 
   refresh(): void {
@@ -106,12 +106,12 @@ export class ClassSelectionUI {
       choose.type = 'button';
       choose.className = 'ashen-class-select';
       choose.setAttribute('aria-label', `Choose ${cls.name}`);
-      choose.textContent = current === key ? 'SELECTED' : editable ? 'CHOOSE' : 'CAMP ONLY';
+      choose.textContent = current === key ? 'SELECTED' : editable ? 'CHOOSE' : 'PERMANENT';
       choose.disabled = !editable || current === key;
       choose.addEventListener('click', event => {
         event.preventDefault();
         event.stopPropagation();
-        if (!this.canChange()) { this.showError('Return to the next expedition entrance to change class.'); return; }
+        if (!this.canChange()) { this.showError('Class is permanent for this character. Create a new character to choose another class.'); return; }
         if (!this.onChoose(key)) {
           this.showError('Class could not be saved. Check local storage and try again. Your current class remains unchanged.');
           return;
@@ -122,7 +122,7 @@ export class ClassSelectionUI {
       card.append(heading, tagline, description, stats, choose);
       this.cards.append(card);
     }
-    if (!editable) this.showError('Class is locked for this expedition. Change before withdrawing equipment or leaving camp on your next run.');
+    if (!editable) this.showError('Class is permanent for this character. Your saved passive tree and progression belong to this class.');
     else this.warning.hidden = true;
     this.renderTree();
   }
