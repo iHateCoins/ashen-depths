@@ -39,6 +39,14 @@ import { PassiveTreeProgress, type PassiveAllocationResult } from '../character/
 import type { EquipmentSlot, LootItem } from '../loot/ExpeditionLoot';
 
 /** In-memory handoff only. Nothing here is secured without extraction. */
+interface CheckpointTransfer {
+  kind: 'checkpoint';
+  consumed?: boolean;
+  depth: number;
+  skills: AutoSkillSystem;
+  classId: CharacterClassId;
+}
+
 interface DescentTransfer {
   kind: 'descend';
   /** Phaser can reuse the last restart data when restart() has no arguments. */
@@ -117,14 +125,14 @@ export class DungeonScene extends Phaser.Scene {
   private defeatPresented = false;
   private depth = 1;
   private expeditionSeed = 0;
-  private incoming: DescentTransfer | null = null;
+  private incoming: DescentTransfer | CheckpointTransfer | null = null;
 
   constructor() { super('DungeonScene'); }
 
-  init(data?: DescentTransfer): void {
+  init(data?: DescentTransfer | CheckpointTransfer): void {
     // ScenePlugin.restart() without new data can replay the previous payload.
     // A descent handoff may initialize ONE floor only; it is not a saved run.
-    this.incoming = data?.kind === 'descend' && !data.consumed ? data : null;
+    this.incoming = data && (data.kind === 'descend' || data.kind === 'checkpoint') && !data.consumed ? data : null;
   }
 
   create(): void {
@@ -141,7 +149,7 @@ export class DungeonScene extends Phaser.Scene {
     this.optionalObjectives = new OptionalObjectiveDirector(this.dungeon, this.roomEncounters);
     this.loot = new ExpeditionLoot(this.dungeon.seed, undefined, this.depth);
     this.loadout = new EquipmentLoadout(this.loot);
-    if (carry) {
+    if (carry?.kind === 'descend') {
       this.loot.bag.push(...carry.bag, ...carry.equipped);
       for (const item of carry.equipped) {
         if (this.loadout.equip(item.id) !== 'equipped') {
@@ -151,9 +159,9 @@ export class DungeonScene extends Phaser.Scene {
     }
     this.securedStash = new SecuredStash();
     this.selectedClass = carry?.classId ?? this.securedStash.preferredClass;
-    this.progression = carry?.progression ??
+    this.progression = (carry?.kind === 'descend' ? carry.progression : null) ??
       new SkillProgression(this.securedStash.unlockedIds, this.selectedClass);
-    this.passives = carry?.passives ?? new PassiveMilestoneProgress(
+    this.passives = (carry?.kind === 'descend' ? carry.passives : null) ?? new PassiveMilestoneProgress(
       this.selectedClass, this.securedStash.passiveDepthsFor(this.selectedClass),
     );
     this.passiveTree = new PassiveTreeProgress(this.selectedClass,
@@ -173,7 +181,7 @@ export class DungeonScene extends Phaser.Scene {
       archetype.basicInterval);
     this.skills = carry?.skills ?? new AutoSkillSystem([archetype.startingSkill]);
     this.recalculateEquipment();
-    if (carry) this.health.hp = Math.max(1, Math.min(this.health.maxHp, carry.hp));
+    if (carry?.kind === 'descend') this.health.hp = Math.max(1, Math.min(this.health.maxHp, carry.hp));
     this.kills = 0;
     this.finalized = false;
     this.defeatPresented = false;
@@ -304,11 +312,20 @@ export class DungeonScene extends Phaser.Scene {
       id => this.changeClass(id),
       this.skills,
       this.progression,
-      () => {
+      depth => {
+        if (depth > 1) {
+          // Fresh expedition at a previously secured checkpoint, without
+          // carrying risky loot or Warden rewards from the prior run.
+          if (depth > this.securedStash.highestUnlockedDepth) return;
+          this.scene.restart({kind: 'checkpoint', depth, classId: this.selectedClass,
+            skills: this.skills} satisfies CheckpointTransfer);
+          return;
+        }
         this.updateObjectiveStatus();
         document.documentElement.dataset.ashenPreparation = 'entered';
       },
       prepare,
+      this.securedStash.highestUnlockedDepth,
     );
     document.documentElement.dataset.ashenPreparation = prepare ? 'title' : 'entered';
     const preparationUi = this.preparationUi;
