@@ -315,6 +315,8 @@ export class DungeonScene extends Phaser.Scene {
       this.progression,
       depth => {
         if (depth > this.securedStash.highestUnlockedDepth) return false;
+        this.stashUi.closeStash();
+        this.classUi.hide();
         // The saved loadout becomes at-risk BEFORE entering the tower.
         // A failed compare-and-set leaves every item in the hideout.
         const equipped = this.securedStash.withdrawEquippedForExpedition();
@@ -331,6 +333,7 @@ export class DungeonScene extends Phaser.Scene {
             throw new Error('Cannot restore risked equipment on entry');
           }
         }
+        this.stashUi.setHideoutMode(false);
         this.recalculateEquipment();
         this.refreshLootPrompt();
         this.updateObjectiveStatus();
