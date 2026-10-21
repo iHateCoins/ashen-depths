@@ -321,11 +321,8 @@ export class SecuredStash {
       highestUnlockedDepth: Math.max(this.highestUnlockedDepth,
         defeatedWardenDepth === undefined ? 1 : Math.min(497, defeatedWardenDepth + 1)),
       items: [...this.data.items, ...secured],
-      equippedItemIds: [
-        ...(this.data.equippedItemIds ?? []),
-        ...items.map((item, i) => wornIds.includes(item.id) ? secured[i].id : null)
-          .filter((id): id is string => id !== null),
-      ],
+      equippedItemIds: wornIds.length ? items.map((item, i) => wornIds.includes(item.id) ? secured[i].id : null)
+        .filter((id): id is string => id !== null) : [...(this.data.equippedItemIds ?? [])],
       unlocks: [...new Set([...(this.data.unlocks ?? []), ...unlocks])],
       forgeEmbers: this.forgeEmbers + forgeEmbers,
       ...(this.data.preferredClass ? { preferredClass: this.data.preferredClass } : {}),
