@@ -20,6 +20,28 @@ async function openExpedition(page:Page,klass:'vanguard'|'arcanist'='vanguard'):
   await expect.poll(()=>page.evaluate(()=>document.documentElement.dataset.ashenPreparation)).toBe('entered');
 }
 
+test('no stale adventurer after deletion and alternate starting skill persists',async({page})=>{
+  await page.goto(url);
+  await expect(page.locator('#boot-status')).toHaveCount(0,{timeout:20000});
+  const intro=page.locator('#ashen-preparation-overlay');
+  await expect(intro).not.toContainText('Current adventurer:');
+  await press(intro.getByRole('button',{name:'NEW GAME'}));
+  await press(intro.getByRole('button',{name:'Choose Arcanist'}));
+  await press(intro.getByRole('button',{name:'NEXT · STARTING SKILL'}));
+  await press(intro.getByRole('button',{name:'Choose starting skill Frost Bloom'}));
+  await expect(intro).toContainText('Starting skill: Frost Bloom');
+  await press(intro.getByRole('button',{name:'CREATE CHARACTER & ENTER FLOOR 1'}));
+  expect(await page.evaluate(()=>{
+    const scene=(window as any).__ashenE2eGame.scene.getScene('DungeonScene') as any;
+    return scene.skills.equipped.map((skill:any)=>skill.id);
+  })).toEqual(['frost-bloom']);
+  await page.reload();
+  await expect(page.locator('#boot-status')).toHaveCount(0,{timeout:20000});
+  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('ashen-depths-stash-v1')!));
+  expect(saved.skillLoadout.active).toEqual(['frost-bloom']);
+  expect(saved.unlocks).toContain('skill:frost-bloom');
+});
+
 test('hideout stash access closes on departure and cannot reopen inside the tower',async({page})=>{
   await page.goto(url);
   await expect(page.locator('#boot-status')).toHaveCount(0,{timeout:20000});
