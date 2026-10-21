@@ -391,6 +391,22 @@ export class SecuredStash {
     return true;
   }
 
+  /** Equip or unequip directly in the safe hideout without risking ownership. */
+  setHideoutEquipment(slot: LootItem['slot'], itemId: string | null): boolean {
+    if (this.state !== 'ready' || !(['weapon','armor','charm'] as string[]).includes(slot)) return false;
+    const item = itemId === null ? null : this.data.items.find(owned => owned.id === itemId);
+    if (itemId !== null && (!item || item.slot !== slot)) return false;
+    const current = this.data.equippedItemIds ?? [];
+    const kept = current.filter(id => this.data.items.find(owned => owned.id === id)?.slot !== slot);
+    const nextIds = item ? [...kept, item.id] : kept;
+    if (current.length === nextIds.length && current.every(id => nextIds.includes(id))) return true;
+    return this.commit({
+      ...this.data,
+      revision: this.data.revision + 1,
+      equippedItemIds: nextIds,
+    });
+  }
+
   /**
    * Commit the transfer of every equipped item from safe storage into an
    * at-risk expedition, in one write. Never returns equipment on failure.
