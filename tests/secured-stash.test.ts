@@ -27,6 +27,24 @@ class MemoryStorage implements StashStorage {
 }
 
 describe('secured stash persistence and transactions', () => {
+  it('moves retained gear out of safe ownership in one atomic departure', () => {
+    const storage = new MemoryStorage();
+    const stash = new SecuredStash(storage);
+    expect(stash.secureExpedition([item('blade'), item('spare', 'armor')], [], 0, undefined, 1, ['blade']).ok).toBe(true);
+    expect(stash.equippedItems).toHaveLength(1);
+    storage.failWrite = true;
+    expect(stash.withdrawEquippedForExpedition()).toBeNull();
+    expect(stash.equippedItems).toHaveLength(1);
+    expect(stash.items).toHaveLength(2);
+    storage.failWrite = false;
+    const risked = stash.withdrawEquippedForExpedition();
+    expect(risked?.map(gear => gear.slot)).toEqual(['weapon']);
+    expect(stash.equippedItems).toHaveLength(0);
+    expect(stash.items).toHaveLength(1);
+    expect(new SecuredStash(storage).items).toHaveLength(1);
+    expect(stash.withdrawEquippedForExpedition()).toEqual([]);
+  });
+
   it('persists equipped ownership through extraction and reload without duplicating items', () => {
     const storage = new MemoryStorage();
     const stash = new SecuredStash(storage);
