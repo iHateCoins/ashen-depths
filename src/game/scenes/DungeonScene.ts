@@ -141,7 +141,7 @@ export class DungeonScene extends Phaser.Scene {
     if (carry) carry.consumed = true;
     this.cameras.main.setBackgroundColor('#10171b');
     this.depth = carry?.depth ?? 1;
-    this.expeditionSeed = carry?.expeditionSeed ??
+    this.expeditionSeed = (carry?.kind === 'descend' ? carry.expeditionSeed : undefined) ??
       dungeonSeedFromSearch(window.location.search, () => Math.floor(Math.random() * 0x100000000));
     this.dungeon = generateDungeon(seedForDepth(this.expeditionSeed, this.depth));
     this.grid = createDungeonNavigationGrid(this.dungeon);
