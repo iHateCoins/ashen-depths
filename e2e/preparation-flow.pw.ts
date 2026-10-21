@@ -14,8 +14,8 @@ async function openExpedition(page:Page,klass:'vanguard'|'arcanist'='vanguard'):
   await expect(intro).toHaveAttribute('data-step','class');
   await press(intro.getByRole('button',{name:`Choose ${klass==='vanguard'?'Vanguard':'Arcanist'}`}));
   await press(intro.getByRole('button',{name:'NEXT · STARTING SKILL'}));
-  await expect(intro).toHaveAttribute('data-step','skills');
-  await press(intro.getByRole('button',{name:'ENTER DUNGEON'}));
+  await expect(intro).toHaveAttribute('data-step','creation');
+  await press(intro.getByRole('button',{name:'CREATE CHARACTER & ENTER FLOOR 1'}));
   await expect(intro).toBeHidden();
   await expect.poll(()=>page.evaluate(()=>document.documentElement.dataset.ashenPreparation)).toBe('entered');
 }
@@ -28,7 +28,7 @@ test('hideout stash access closes on departure and cannot reopen inside the towe
   await press(intro.getByRole('button',{name:'NEW GAME'}));
   await press(intro.getByRole('button',{name:'Choose Vanguard'}));
   await press(intro.getByRole('button',{name:'NEXT · STARTING SKILL'}));
-  await press(intro.getByRole('button',{name:'ENTER DUNGEON'}));
+  await press(intro.getByRole('button',{name:'CREATE CHARACTER & ENTER FLOOR 1'}));
   await expect(intro).toBeHidden();
   await page.evaluate(()=>{ const scene=(window as any).__ashenE2eGame.scene.getScene('DungeonScene') as any; scene.scene.restart({kind:'fresh'}); });
   await expect(intro).toHaveAttribute('data-step','title');
@@ -38,7 +38,7 @@ test('hideout stash access closes on departure and cannot reopen inside the towe
   await press(page.locator('#ashen-stash-overlay').getByRole('button',{name:'CLOSE'}));
   await expect(page.locator('#ashen-stash-overlay')).toBeHidden();
   await press(intro.getByRole('button',{name:'PREPARE EXPEDITION'}));
-  await press(intro.getByRole('button',{name:'ENTER DUNGEON'}));
+  await press(intro.getByRole('button',{name:'CREATE CHARACTER & ENTER FLOOR 1'}));
   await expect(intro).toBeHidden();
   await expect(page.locator('#ashen-stash-toggle')).toBeHidden();
   await expect(page.locator('#ashen-class-toggle')).toBeHidden();
@@ -73,13 +73,13 @@ test('new player prepares class and automatic skills before entering an otherwis
   await press(intro.getByRole('button',{name:'Choose Vanguard'}));
   await expect(intro).toContainText('✓ SELECTED');
   await press(intro.getByRole('button',{name:'NEXT · STARTING SKILL'}));
-  await expect(intro.getByRole('button',{name:'Remove Crescent Cleave'})).toBeVisible();
-  await expect(intro.getByRole('button',{name:'Equip Cinder Burst'})).toBeDisabled();
-  await press(intro.getByRole('button',{name:'Remove Crescent Cleave'}));
-  await press(intro.getByRole('button',{name:'ENTER DUNGEON'}));
-  await expect(intro.locator('.ashen-preparation-error')).toContainText('at least one');
-  await press(intro.getByRole('button',{name:'Equip Crescent Cleave'}));
-  await press(intro.getByRole('button',{name:'ENTER DUNGEON'}));
+  await expect(intro).toContainText('Starting skill: Crescent Cleave');
+  expect(await page.evaluate(()=>localStorage.getItem('ashen-depths-stash-v1'))).toBeNull();
+  await press(intro.getByRole('button',{name:'BACK · CLASS'}));
+  await expect(intro).toHaveAttribute('data-step','class');
+  expect(await page.evaluate(()=>localStorage.getItem('ashen-depths-stash-v1'))).toBeNull();
+  await press(intro.getByRole('button',{name:'NEXT · STARTING SKILL'}));
+  await press(intro.getByRole('button',{name:'CREATE CHARACTER & ENTER FLOOR 1'}));
   await expect(intro).toBeHidden();
   const run=await page.evaluate(()=>{
     const s=(window as any).__ashenE2eGame.scene.getScene('DungeonScene') as any;
@@ -121,8 +121,8 @@ test('successful extraction returns to preparation, while Warden descent stays i
   await press(page.locator('#ashen-victory-overlay').getByRole('button',{name:'NEW EXPEDITION'}));
   await expect.poll(()=>page.evaluate(()=>document.documentElement.dataset.ashenDepth)).toBe('1');
   const intro=page.locator('#ashen-preparation-overlay');
-  await expect(intro).toHaveAttribute('data-step','title');
-  await expect(intro).toContainText('Current adventurer: Vanguard');
+  await expect(intro).toHaveAttribute('data-step','hideout');
+  await expect(intro).toContainText('Your Vanguard is permanent');
   await expect(intro.getByRole('button',{name:'LOAD CHARACTER'})).toBeVisible();
 });
 
