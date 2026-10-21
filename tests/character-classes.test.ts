@@ -55,29 +55,25 @@ describe('M07 PR02 class foundations', () => {
     expect(warrior.characterClass).toBe('vanguard');
   });
 
-  it('remembers a class in the original schema-1 stash with zero gear loss', () => {
+  it('preserves legacy characters and permanently locks their class without losing gear', () => {
     const storage = new Storage();
     const old = { schema: 1, revision: 7, completed: 3, items: [],
       unlocks: ['skill:frost-bloom'], forgeEmbers: 2 };
     storage.values.set(STASH_STORAGE_KEY, JSON.stringify(old));
     const saved = new SecuredStash(storage);
+    expect(saved.hasCharacter).toBe(true);
     expect(saved.preferredClass).toBe('arcanist');
-    expect(saved.selectCharacterClass('vanguard')).toBe(true);
-    expect(saved.preferredClass).toBe('vanguard');
+    expect(saved.selectCharacterClass('vanguard')).toBe(false);
     expect(saved.completedExpeditions).toBe(3);
     expect(saved.unlockedIds).toEqual(['skill:frost-bloom']);
     expect(saved.forgeEmbers).toBe(2);
-    expect(saved.selectCharacterClass('vanguard')).toBe(true);
-    const refreshed = new SecuredStash(storage);
-    expect(refreshed.preferredClass).toBe('vanguard');
-    expect(refreshed.secureExpedition([],[],1)).toMatchObject({ok:true,saved:0});
+    expect(saved.secureExpedition([],[],1)).toMatchObject({ok:true,saved:0});
     const next = new SecuredStash(storage);
-    expect(next.preferredClass).toBe('vanguard');
+    expect(next.preferredClass).toBe('arcanist');
     expect(next.completedExpeditions).toBe(4);
     expect(next.forgeEmbers).toBe(3);
     expect(next.unlockedIds).toEqual(['skill:frost-bloom']);
-    expect(next.selectCharacterClass('arcanist')).toBe(true);
-    expect(new SecuredStash(storage).preferredClass).toBe('arcanist');
+    expect(next.selectCharacterClass('vanguard')).toBe(false);
   });
 
   it('rejects missing storage, failed writes and stale tabs without changing a class',()=>{

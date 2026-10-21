@@ -3,7 +3,7 @@ import { ACTIVE_SKILLS, SKILL_SLOT_LIMIT, SKILL_SUPPORTS, type AutoSkillSystem }
 import type { SkillProgression } from '../combat/SkillProgression';
 import type { SecuredStash } from '../loot/SecuredStash';
 
-export type PreparationStep = 'title' | 'class' | 'skills';
+export type PreparationStep = 'title' | 'class' | 'hideout' | 'skills';
 
 /**
  * Future hideout entry point. No dungeon time, movement or combat advances
@@ -125,7 +125,7 @@ export class PreparationUI {
     this.contents.replaceChildren();
     this.actions.replaceChildren();
     this.error.hidden = true;
-    if (this.hideoutStash || this.hideoutPassives) {
+    if (this.step === 'hideout' && (this.hideoutStash || this.hideoutPassives)) {
       const management = document.createElement('div');
       management.className = 'ashen-preparation-actions';
       if (this.hideoutStash) management.append(this.button('HIDEOUT STASH & ITEM FORGE', this.hideoutStash, true));
@@ -140,14 +140,35 @@ export class PreparationUI {
       summary.className = 'ashen-preparation-summary';
       summary.textContent = `Current adventurer: ${CHARACTER_CLASSES[this.getClass()].name} · Your secured stash, skill discoveries and passive points are retained.`;
       this.contents.append(summary);
-      this.actions.append(this.button('PREPARE EXPEDITION', () => this.goto('class')));
+      if (this.stash?.hasCharacter) {
+        this.actions.append(this.button('LOAD CHARACTER', () => this.goto('hideout')));
+        this.actions.append(this.button('DELETE SAVE', () => {
+          if (!window.confirm('Permanently delete this character, all stored items, progression and tower access? This cannot be undone.')) return;
+          if (!this.stash!.deleteCharacter()) {
+            this.warn('Deletion failed. Existing save has not been changed.');
+            return;
+          }
+          window.location.reload();
+        }, true));
+      } else {
+        this.actions.append(this.button('NEW GAME', () => this.goto('class')));
+      }
+      return;
+    }
+
+    if (this.step === 'hideout') {
+      this.root.dataset.step = 'hideout';
+      this.heading.textContent = 'Your Hideout';
+      this.detail.textContent = `Your ${CHARACTER_CLASSES[this.getClass()].name} is permanent. Organize equipment, skills, crafting and passives before choosing an expedition.`;
+      this.actions.append(this.button('PREPARE EXPEDITION', () => this.goto('skills')));
+      this.actions.append(this.button('RETURN TO TITLE', () => this.goto('title'), true));
       return;
     }
 
     if (this.step === 'class') {
       this.root.dataset.step = 'class';
       this.heading.textContent = 'Choose your class';
-      this.detail.textContent = 'Select your starting combat style. No equipment type is restricted, and learned skills can support hybrid builds. You can choose again before your next expedition.';
+      this.detail.textContent = 'Select your starting combat style. No equipment type is restricted, and learned skills can support hybrid builds. Your class is permanent for this character.';
       const cards = document.createElement('div');
       cards.className = 'ashen-preparation-classes';
       for (const id of ['vanguard', 'arcanist'] as const) {
@@ -156,7 +177,7 @@ export class PreparationUI {
         const card = this.button(
           `${cls.name}\n${cls.tagline}\n${cls.health} HP · ${cls.startingSkill.name}\n${selected ? '✓ SELECTED' : 'CHOOSE CLASS'}`,
           () => {
-            if (id !== this.getClass() && !this.chooseClass(id)) {
+            if (!this.stash?.hasCharacter && !this.chooseClass(id)) {
               this.warn('Class selection could not be saved. Check browser storage and try again.');
               return;
             }
@@ -173,7 +194,7 @@ export class PreparationUI {
       this.contents.append(cards);
       this.actions.append(
         this.button('BACK', () => this.goto('title'), true),
-        this.button('NEXT · SKILLS', () => this.goto('skills')),
+        this.button('NEXT · STARTING SKILL', () => this.goto('skills')),
       );
       return;
     }
@@ -269,7 +290,7 @@ export class PreparationUI {
     }
     this.contents.append(list);
     this.actions.append(
-      this.button('BACK', () => this.goto('class'), true),
+      this.button('BACK', () => this.goto(this.stash?.completedExpeditions || this.stash?.highestUnlockedDepth !== 1 ? 'hideout' : 'class'), true),
       this.button('ENTER DUNGEON', () => {
         if (this.skills.equipped.length === 0) {
           this.warn('Equip at least one active skill before entering the dungeon.');

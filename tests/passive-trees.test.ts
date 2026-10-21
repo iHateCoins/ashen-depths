@@ -139,12 +139,12 @@ describe('M07 PR04 permanently allocated passive trees',()=>{
     expect(other.cooldownReduction).toBe(3);
   });
 
-  it('separate class trees persist without resetting each other after selection or extraction',()=>{
+  it('preserves independent legacy class trees while locking the chosen character class',()=>{
     const storage=new Storage();
     storage.setItem(STASH_STORAGE_KEY,JSON.stringify(baseline));
     const stash=new SecuredStash(storage);
     expect(stash.allocatePassiveNode('vanguard','v-fortitude')).toBe('allocated');
-    expect(stash.selectCharacterClass('arcanist')).toBe(true);
+    expect(stash.selectCharacterClass('arcanist')).toBe(false);
     expect(stash.allocatePassiveNode('arcanist','a-spark')).toBe('allocated');
     expect(stash.secureExpedition([],[],0,{classId:'arcanist',depths:[8]}).ok).toBe(true);
     const next=new SecuredStash(storage);

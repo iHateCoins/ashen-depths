@@ -56,30 +56,25 @@ test('three passive branches spend secured points and apply real stats without c
   expect(raw.forgeEmbers).toBe(3);
   expect(raw.items[0].id).toBe('historic-weapon');
 
-  // Class selection changes the active talent tree but retains all purchases.
-  await activate(page,modal.getByRole('button',{name:'Choose Arcanist'}));
-  await expect(tree.getByRole('button',{name:'Allocate Kindled Mind'})).toBeEnabled();
-  expect((await details(page)).selected).toEqual([]);
-  await activate(page,tree.getByRole('button',{name:'Allocate Kindled Mind'}));
-  const mage=await details(page);
-  expect(mage.cls).toBe('arcanist');
-  expect(mage.attack).toBe(0);
-  expect(mage.hp).toBe(100);
-  expect(mage.selected).toEqual(['a-spark']);
-  expect(mage.available).toBe(1);
+  // A legacy save may retain milestones from different classes; the character's
+  // Vanguard identity and allocations cannot be switched on the same save.
+  await expect(modal.getByRole('button',{name:'Choose Arcanist'})).toBeDisabled();
+  await expect(modal).toContainText('Class is permanent');
+  expect((await details(page)).cls).toBe('vanguard');
   await activate(page,modal.getByRole('button',{name:'CLOSE'}));
 
   await page.reload({waitUntil:'domcontentloaded'});
   await expect(page.locator('#boot-status')).toHaveCount(0,{timeout:20000});
-  expect((await details(page)).selected).toEqual(['a-spark']);
-  await activate(page,page.locator('#ashen-class-toggle'));
-  await activate(page,modal.getByRole('button',{name:'Choose Vanguard'}));
-  expect((await details(page)).selected).toEqual(['v-strike','v-tempo','v-fortitude','v-plating']);
-  expect((await details(page)).hp).toBe(126);
+  expect(await details(page)).toEqual({
+    cls:'vanguard',hp:126,attack:5,armor:2,haste:3,
+    selected:['v-strike','v-tempo','v-fortitude','v-plating'],available:0,
+  });
   const persisted=await page.evaluate(()=>JSON.parse(localStorage.getItem('ashen-depths-stash-v1')!));
   expect(persisted.passiveAllocations).toEqual({
-    vanguard:['v-strike','v-tempo','v-fortitude','v-plating'],arcanist:['a-spark'],
+    vanguard:['v-strike','v-tempo','v-fortitude','v-plating'],
   });
+  expect(persisted.passiveMilestones).toEqual({vanguard:[2,4,6,8],arcanist:[2,4]});
+  expect(persisted.items[0].id).toBe('historic-weapon');
   expect(errors).toEqual([]);
 });
 

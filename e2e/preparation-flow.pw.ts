@@ -10,10 +10,10 @@ async function openExpedition(page:Page,klass:'vanguard'|'arcanist'='vanguard'):
   const intro=page.locator('#ashen-preparation-overlay');
   await expect(intro).toBeVisible();
   await expect(intro).toHaveAttribute('data-step','title');
-  await press(intro.getByRole('button',{name:'PREPARE EXPEDITION'}));
+  await press(intro.getByRole('button',{name:'NEW GAME'}));
   await expect(intro).toHaveAttribute('data-step','class');
   await press(intro.getByRole('button',{name:`Choose ${klass==='vanguard'?'Vanguard':'Arcanist'}`}));
-  await press(intro.getByRole('button',{name:'NEXT · SKILLS'}));
+  await press(intro.getByRole('button',{name:'NEXT · STARTING SKILL'}));
   await expect(intro).toHaveAttribute('data-step','skills');
   await press(intro.getByRole('button',{name:'ENTER DUNGEON'}));
   await expect(intro).toBeHidden();
@@ -25,11 +25,21 @@ test('hideout stash access closes on departure and cannot reopen inside the towe
   await expect(page.locator('#boot-status')).toHaveCount(0,{timeout:20000});
   const intro=page.locator('#ashen-preparation-overlay');
   await expect(intro).toBeVisible();
+  await press(intro.getByRole('button',{name:'NEW GAME'}));
+  await press(intro.getByRole('button',{name:'Choose Vanguard'}));
+  await press(intro.getByRole('button',{name:'NEXT · STARTING SKILL'}));
+  await press(intro.getByRole('button',{name:'ENTER DUNGEON'}));
+  await expect(intro).toBeHidden();
+  await page.evaluate(()=>{ const scene=(window as any).__ashenE2eGame.scene.getScene('DungeonScene') as any; scene.scene.restart({kind:'fresh'}); });
+  await expect(intro).toHaveAttribute('data-step','title');
+  await press(intro.getByRole('button',{name:'LOAD CHARACTER'}));
   await press(intro.getByRole('button',{name:'HIDEOUT STASH & ITEM FORGE'}));
   await expect(page.locator('#ashen-stash-overlay')).toBeVisible();
   await press(page.locator('#ashen-stash-overlay').getByRole('button',{name:'CLOSE'}));
   await expect(page.locator('#ashen-stash-overlay')).toBeHidden();
-  await openExpedition(page);
+  await press(intro.getByRole('button',{name:'PREPARE EXPEDITION'}));
+  await press(intro.getByRole('button',{name:'ENTER DUNGEON'}));
+  await expect(intro).toBeHidden();
   await expect(page.locator('#ashen-stash-toggle')).toBeHidden();
   await expect(page.locator('#ashen-class-toggle')).toBeHidden();
   await page.evaluate(()=>{
@@ -59,10 +69,10 @@ test('new player prepares class and automatic skills before entering an otherwis
       phase:document.documentElement.dataset.ashenPreparation};
   });
   expect(after).toEqual(before);
-  await press(intro.getByRole('button',{name:'PREPARE EXPEDITION'}));
+  await press(intro.getByRole('button',{name:'NEW GAME'}));
   await press(intro.getByRole('button',{name:'Choose Vanguard'}));
   await expect(intro).toContainText('✓ SELECTED');
-  await press(intro.getByRole('button',{name:'NEXT · SKILLS'}));
+  await press(intro.getByRole('button',{name:'NEXT · STARTING SKILL'}));
   await expect(intro.getByRole('button',{name:'Remove Crescent Cleave'})).toBeVisible();
   await expect(intro.getByRole('button',{name:'Equip Cinder Burst'})).toBeDisabled();
   await press(intro.getByRole('button',{name:'Remove Crescent Cleave'}));
@@ -113,6 +123,7 @@ test('successful extraction returns to preparation, while Warden descent stays i
   const intro=page.locator('#ashen-preparation-overlay');
   await expect(intro).toHaveAttribute('data-step','title');
   await expect(intro).toContainText('Current adventurer: Vanguard');
+  await expect(intro.getByRole('button',{name:'LOAD CHARACTER'})).toBeVisible();
 });
 
 test('a guarded cache message never intercepts touch movement or forces a confirmation',async({page})=>{
