@@ -326,6 +326,7 @@ export class DungeonScene extends Phaser.Scene {
       },
       prepare,
       this.securedStash.highestUnlockedDepth,
+      this.securedStash,
     );
     document.documentElement.dataset.ashenPreparation = prepare ? 'title' : 'entered';
     const preparationUi = this.preparationUi;
