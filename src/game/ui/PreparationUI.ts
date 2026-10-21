@@ -33,6 +33,19 @@ export class PreparationUI {
   ) {
     this.open = show;
     this.selectedDepth = Math.max(1, Math.min(497, highestUnlockedDepth));
+    const saved = this.stash?.skillLoadout;
+    if (saved) {
+      const skills = ACTIVE_SKILLS.filter(skill => saved.active.includes(skill.id) &&
+        this.progression.canUseSkill(skill.id));
+      if (skills.length) {
+        this.skills.setEquipped(skills);
+        for (const skill of skills) {
+          this.skills.setSupportCapacity(skill.id, this.stash?.socketsFor(skill.id) ?? 0);
+          const supported = (saved.supports[skill.id] ?? []).filter(id => this.progression.canUseSupport(id));
+          try { this.skills.setSupports(skill.id, supported); } catch { this.skills.setSupports(skill.id, []); }
+        }
+      }
+    }
     const root = document.createElement('section');
     root.id = 'ashen-preparation-overlay';
     root.className = 'ashen-preparation-overlay';
@@ -261,6 +274,15 @@ export class PreparationUI {
         if (this.skills.equipped.length === 0) {
           this.warn('Equip at least one active skill before entering the dungeon.');
           return;
+        }
+        if (this.stash) {
+          const active = this.skills.equipped.map(skill => skill.id);
+          const supports = Object.fromEntries(active.map(id =>
+            [id, this.skills.supportsFor(id).map(support => support.id)]));
+          if (!this.stash.saveSkillLoadout(active, supports)) {
+            this.warn('Skill loadout could not be saved. Expedition has not started.');
+            return;
+          }
         }
         if (!this.onEnter(this.selectedDepth)) {
           this.warn('Expedition could not begin. Equipment remains safe in the hideout. Check storage and retry.');
