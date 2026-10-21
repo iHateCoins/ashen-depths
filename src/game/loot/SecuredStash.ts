@@ -1,5 +1,5 @@
 import { lootHash, AFFIX_NAMES, AFFIX_POOLS, maximumAffixTier, type LootItem, type ItemAffix } from './ExpeditionLoot';
-import { ACTIVE_SKILLS } from '../combat/AutoSkillSystem';
+import { ACTIVE_SKILLS, SKILL_SUPPORTS, SKILL_SLOT_LIMIT } from '../combat/AutoSkillSystem';
 import { isValidUnlockId, UNLOCK_CHOICES } from '../combat/SkillProgression';
 import { DEFAULT_CHARACTER_CLASS, isCharacterClassId, type CharacterClassId } from '../character/CharacterClasses';
 import { clonePassiveLedger, validPassiveDepth, validPassiveLedger,
@@ -26,6 +26,8 @@ interface StashSnapshot {
   highestUnlockedDepth?: number;
   /** Skill-owned permanent support capacity, independently crafted per skill. */
   skillSockets?: Record<string, number>;
+  /** Saved hideout skills and socket-limited supports. */
+  skillLoadout?: { active: string[]; supports: Record<string, string[]> };
   items: LootItem[];
   /** Equipped item IDs reference secured items, not duplicate copies. */
   equippedItemIds?: string[];
@@ -91,6 +93,26 @@ function validSockets(value: unknown): value is Record<string, number> {
       Number.isSafeInteger(count) && count >= 0 && count <= MAX_SKILL_SOCKETS);
 }
 
+function validSkillLoadout(value: unknown, sockets: Record<string, number> = {}): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as {active?: unknown; supports?: unknown};
+  if (!Array.isArray(data.active) || data.active.length > SKILL_SLOT_LIMIT ||
+      data.active.length === 0 || !data.active.every(id => typeof id === 'string' && skillIds.has(id)) ||
+      new Set(data.active).size !== data.active.length || !data.supports ||
+      typeof data.supports !== 'object' || Array.isArray(data.supports)) return false;
+  const available = new Set(SKILL_SUPPORTS.map(s => s.id));
+  const seen = new Set<string>();
+  for (const [skill, supports] of Object.entries(data.supports)) {
+    if (!data.active.includes(skill) || !Array.isArray(supports) ||
+        supports.length > (sockets[skill] ?? 0)) return false;
+    for (const support of supports) {
+      if (typeof support !== 'string' || !available.has(support) || seen.has(support)) return false;
+      seen.add(support);
+    }
+  }
+  return true;
+}
+
 function parseSnapshot(raw: string): StashSnapshot | null {
   try {
     const value: unknown = JSON.parse(raw);
@@ -99,6 +121,7 @@ function parseSnapshot(raw: string): StashSnapshot | null {
     if (data.schema !== 1 || !Number.isSafeInteger(data.revision) || data.revision! < 0 ||
         !Number.isSafeInteger(data.completed) || data.completed! < 0 ||
         (data.skillSockets !== undefined && !validSockets(data.skillSockets)) ||
+        (data.skillLoadout !== undefined && !validSkillLoadout(data.skillLoadout, data.skillSockets)) ||
         (data.highestUnlockedDepth !== undefined &&
           (!Number.isSafeInteger(data.highestUnlockedDepth) ||
            data.highestUnlockedDepth < 1 || data.highestUnlockedDepth > 497)) ||
@@ -184,6 +207,17 @@ export class SecuredStash {
   /** Legacy saves default to the first floor without resetting any stored rewards. */
   get highestUnlockedDepth(): number { return this.data.highestUnlockedDepth ?? 1; }
   socketsFor(skillId: string): number { return this.data.skillSockets?.[skillId] ?? 0; }
+  get skillLoadout(): {active: string[]; supports: Record<string, string[]>} | null {
+    if (!this.data.skillLoadout) return null;
+    return {active: [...this.data.skillLoadout.active], supports: Object.fromEntries(
+      Object.entries(this.data.skillLoadout.supports).map(([id, values]) => [id, [...values]]))};
+  }
+  saveSkillLoadout(active: readonly string[], supports: Record<string, string[]>): boolean {
+    const loadout = {active: [...active], supports: Object.fromEntries(
+      Object.entries(supports).map(([id, values]) => [id, [...values]]))};
+    if (this.state !== 'ready' || !validSkillLoadout(loadout, this.data.skillSockets)) return false;
+    return this.commit({...this.data, revision: this.data.revision + 1, skillLoadout: loadout});
+  }
   /** Spend one secured Ember for an equip-independent skill capacity attempt. */
   craftSkillSocket(skillId: string): SocketOutcome {
     if (this.state !== 'ready') return 'storage-error';
@@ -194,9 +228,12 @@ export class SecuredStash {
     const old = this.socketsFor(skillId);
     const nextCount = outcome === 0 ? Math.max(0, old - 1) :
       outcome === 2 ? Math.min(MAX_SKILL_SOCKETS, old + 1) : old;
+    const nextLoadout = this.skillLoadout;
+    if (nextLoadout?.supports[skillId]) nextLoadout.supports[skillId] = nextLoadout.supports[skillId].slice(0, nextCount);
     const next: StashSnapshot = {
       ...this.data, revision: this.data.revision + 1,
       forgeEmbers: this.forgeEmbers - 1,
+      ...(nextLoadout ? {skillLoadout: nextLoadout} : {}),
       skillSockets: { ...this.data.skillSockets, [skillId]: nextCount },
     };
     if (!this.commit(next)) return 'storage-error';
@@ -318,6 +355,7 @@ export class SecuredStash {
       revision,
       completed: this.data.completed + 1,
       ...(this.data.skillSockets ? { skillSockets: { ...this.data.skillSockets } } : {}),
+      ...(this.data.skillLoadout ? { skillLoadout: this.skillLoadout! } : {}),
       highestUnlockedDepth: Math.max(this.highestUnlockedDepth,
         defeatedWardenDepth === undefined ? 1 : Math.min(497, defeatedWardenDepth + 1)),
       items: [...this.data.items, ...secured],
