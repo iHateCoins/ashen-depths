@@ -62,7 +62,7 @@ test('Vanguard class choice persists through two floors, extraction and next exp
   expect(carried).toEqual({cls:'vanguard',hp:120,starter:['crescent-cleave'],camp:false});
   await activate(page,page.locator('#ashen-class-toggle'));
   await expect(dialog.getByRole('button',{name:'Choose Arcanist'})).toBeDisabled();
-  await expect(dialog).toContainText('Class is locked');
+  await expect(dialog).toContainText('Class is permanent');
   await activate(page,dialog.getByRole('button',{name:'CLOSE'}));
   await wardenDown(page);
   await activate(page,page.getByRole('button',{name:'FINISH EXPEDITION'}));
