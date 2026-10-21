@@ -80,7 +80,7 @@ test('Vanguard class choice persists through two floors, extraction and next exp
   expect(errors).toEqual([]);
 });
 
-test('failed class preference write leaves class and saved items intact',async({page})=>{
+test('legacy character class remains permanent and existing saved items remain intact',async({page})=>{
   await page.addInitScript(()=>{
     localStorage.setItem('ashen-depths-stash-v1',JSON.stringify({
       schema:1,revision:3,completed:2,items:[
@@ -94,26 +94,17 @@ test('failed class preference write leaves class and saved items intact',async({
   await expect(page.locator('#boot-status')).toHaveCount(0,{timeout:20_000});
   await activate(page,page.locator('#ashen-class-toggle'));
   const dialog=page.locator('#ashen-class-overlay');
-  await page.evaluate(()=>{
-    const proto=Storage.prototype as Storage & { __classPrior?: typeof Storage.prototype.setItem };
-    proto.__classPrior = proto.setItem;
-    proto.setItem=function():void {throw new Error('denied');};
-  });
-  await activate(page,dialog.getByRole('button',{name:'Choose Vanguard'}));
-  await expect(dialog).toContainText('Class could not be saved');
+  await expect(dialog.getByRole('button',{name:'Choose Vanguard'})).toBeDisabled();
+  await expect(dialog).toContainText('Class is permanent');
   expect(await page.evaluate(()=>document.documentElement.dataset.ashenClass)).toBe('arcanist');
-  await page.evaluate(()=>{
-    const proto=Storage.prototype as Storage & { __classPrior?: typeof Storage.prototype.setItem };
-    proto.setItem=proto.__classPrior!;
-    delete proto.__classPrior;
-  });
-  await activate(page,dialog.getByRole('button',{name:'Choose Vanguard'}));
-  await expect(page.locator('#ashen-class-toggle')).toContainText('VANGUARD');
   const save=await page.evaluate(()=>JSON.parse(localStorage.getItem('ashen-depths-stash-v1')!));
-  expect(save.preferredClass).toBe('vanguard');
+  expect(save.preferredClass).toBeUndefined(); // Legacy saves retain original default Arcanist.
   expect(save.items).toHaveLength(1);
   expect(save.items[0].id).toBe('saved-gear');
   expect(save.unlocks).toEqual(['skill:frost-bloom']);
   expect(save.forgeEmbers).toBe(3);
   expect(save.completed).toBe(2);
+  await page.reload({waitUntil:'domcontentloaded'});
+  await expect(page.locator('#boot-status')).toHaveCount(0,{timeout:20_000});
+  expect(await page.evaluate(()=>document.documentElement.dataset.ashenClass)).toBe('arcanist');
 });
