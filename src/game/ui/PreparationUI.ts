@@ -3,7 +3,7 @@ import { ACTIVE_SKILLS, SKILL_SLOT_LIMIT, SKILL_SUPPORTS, type AutoSkillSystem }
 import type { SkillProgression } from '../combat/SkillProgression';
 import type { SecuredStash } from '../loot/SecuredStash';
 
-export type PreparationStep = 'title' | 'class' | 'hideout' | 'skills';
+export type PreparationStep = 'title' | 'class' | 'creation' | 'hideout' | 'skills';
 
 /**
  * Future hideout entry point. No dungeon time, movement or combat advances
@@ -18,6 +18,7 @@ export class PreparationUI {
   private readonly actions: HTMLElement;
   private readonly error: HTMLElement;
   private step: PreparationStep = 'title';
+  private pendingClass: CharacterClassId | null = null;
   private open: boolean;
   private selectedDepth: number;
 
@@ -87,6 +88,7 @@ export class PreparationUI {
 
   get isOpen(): boolean { return this.open; }
   get currentStep(): PreparationStep { return this.step; }
+  enterHideout(): void { if (this.open && this.stash?.hasCharacter) this.goto('hideout'); }
 
   private button(text: string, onClick: () => void, secondary = false): HTMLButtonElement {
     const button = document.createElement('button');
@@ -151,7 +153,7 @@ export class PreparationUI {
           window.location.reload();
         }, true));
       } else {
-        this.actions.append(this.button('NEW GAME', () => this.goto('class')));
+        this.actions.append(this.button('NEW GAME', () => { this.pendingClass = null; this.goto('class'); }));
       }
       return;
     }
@@ -173,14 +175,11 @@ export class PreparationUI {
       cards.className = 'ashen-preparation-classes';
       for (const id of ['vanguard', 'arcanist'] as const) {
         const cls = CHARACTER_CLASSES[id];
-        const selected = this.getClass() === id;
+        const selected = this.pendingClass === id;
         const card = this.button(
           `${cls.name}\n${cls.tagline}\n${cls.health} HP · ${cls.startingSkill.name}\n${selected ? '✓ SELECTED' : 'CHOOSE CLASS'}`,
           () => {
-            if (!this.stash?.hasCharacter && !this.chooseClass(id)) {
-              this.warn('Class selection could not be saved. Check browser storage and try again.');
-              return;
-            }
+            this.pendingClass = id;
             this.render();
           },
           true,
@@ -194,7 +193,36 @@ export class PreparationUI {
       this.contents.append(cards);
       this.actions.append(
         this.button('BACK', () => this.goto('title'), true),
-        this.button('NEXT · STARTING SKILL', () => this.goto('skills')),
+        this.button('NEXT · STARTING SKILL', () => { if (this.pendingClass) this.goto('creation'); }),
+      );
+      return;
+    }
+
+    if (this.step === 'creation') {
+      this.root.dataset.step = 'creation';
+      const selected = this.pendingClass;
+      if (!selected || this.stash?.hasCharacter) { this.goto('title'); return; }
+      const cls = CHARACTER_CLASSES[selected];
+      this.heading.textContent = 'Confirm Your Character';
+      this.detail.textContent = 'This class is permanent. Your starting skill activates automatically. You can unlock and equip more skills later in the hideout.';
+      const summary = document.createElement('p');
+      summary.className = 'ashen-preparation-summary';
+      summary.textContent = `${cls.name} · ${cls.health} HP · Starting skill: ${cls.startingSkill.name}`;
+      this.contents.append(summary);
+      this.actions.append(
+        this.button('BACK · CLASS', () => this.goto('class'), true),
+        this.button('CREATE CHARACTER & ENTER FLOOR 1', () => {
+          if (!this.chooseClass(selected)) {
+            this.warn('Character could not be created. Your save is unchanged.');
+            return;
+          }
+          if (!this.onEnter(1)) {
+            this.warn('Character created, but expedition entry failed. Reload and choose LOAD CHARACTER.');
+            return;
+          }
+          this.open = false;
+          this.root.hidden = true;
+        }),
       );
       return;
     }
@@ -290,7 +318,7 @@ export class PreparationUI {
     }
     this.contents.append(list);
     this.actions.append(
-      this.button('BACK', () => this.goto(this.stash?.completedExpeditions || this.stash?.highestUnlockedDepth !== 1 ? 'hideout' : 'class'), true),
+      this.button('BACK', () => this.goto('hideout'), true),
       this.button('ENTER DUNGEON', () => {
         if (this.skills.equipped.length === 0) {
           this.warn('Equip at least one active skill before entering the dungeon.');
