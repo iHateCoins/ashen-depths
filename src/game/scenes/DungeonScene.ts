@@ -43,6 +43,7 @@ interface CheckpointTransfer {
   kind: 'checkpoint';
   consumed?: boolean;
   depth: number;
+  equipped: LootItem[];
   skills: AutoSkillSystem;
   classId: CharacterClassId;
 }
@@ -149,8 +150,8 @@ export class DungeonScene extends Phaser.Scene {
     this.optionalObjectives = new OptionalObjectiveDirector(this.dungeon, this.roomEncounters);
     this.loot = new ExpeditionLoot(this.dungeon.seed, undefined, this.depth);
     this.loadout = new EquipmentLoadout(this.loot);
-    if (carry?.kind === 'descend') {
-      this.loot.bag.push(...carry.bag, ...carry.equipped);
+    if (carry) {
+      this.loot.bag.push(...(carry.kind === 'descend' ? carry.bag : []), ...carry.equipped);
       for (const item of carry.equipped) {
         if (this.loadout.equip(item.id) !== 'equipped') {
           throw new Error('Cannot restore worn equipment during descent');
@@ -313,16 +314,28 @@ export class DungeonScene extends Phaser.Scene {
       this.skills,
       this.progression,
       depth => {
+        if (depth > this.securedStash.highestUnlockedDepth) return false;
+        // The saved loadout becomes at-risk BEFORE entering the tower.
+        // A failed compare-and-set leaves every item in the hideout.
+        const equipped = this.securedStash.withdrawEquippedForExpedition();
+        if (equipped === null) return false;
         if (depth > 1) {
-          // Fresh expedition at a previously secured checkpoint, without
-          // carrying risky loot or Warden rewards from the prior run.
-          if (depth > this.securedStash.highestUnlockedDepth) return;
+          // New floor without any unextracted loot from a previous expedition.
           this.scene.restart({kind: 'checkpoint', depth, classId: this.selectedClass,
-            skills: this.skills} satisfies CheckpointTransfer);
-          return;
+            skills: this.skills, equipped} satisfies CheckpointTransfer);
+          return true;
         }
+        this.loot.bag.push(...equipped);
+        for (const item of equipped) {
+          if (this.loadout.equip(item.id) !== 'equipped') {
+            throw new Error('Cannot restore risked equipment on entry');
+          }
+        }
+        this.recalculateEquipment();
+        this.refreshLootPrompt();
         this.updateObjectiveStatus();
         document.documentElement.dataset.ashenPreparation = 'entered';
+        return true;
       },
       prepare,
       this.securedStash.highestUnlockedDepth,
