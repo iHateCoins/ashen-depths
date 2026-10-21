@@ -27,6 +27,25 @@ class MemoryStorage implements StashStorage {
 }
 
 describe('secured stash persistence and transactions', () => {
+  it('creates one permanent class and resets only on explicit save deletion', () => {
+    const storage = new MemoryStorage();
+    const stash = new SecuredStash(storage);
+    expect(stash.hasCharacter).toBe(false);
+    expect(stash.createCharacter('vanguard')).toBe(true);
+    expect(stash.preferredClass).toBe('vanguard');
+    expect(stash.selectCharacterClass('arcanist')).toBe(false);
+    expect(stash.createCharacter('arcanist')).toBe(false);
+    expect(new SecuredStash(storage).hasCharacter).toBe(true);
+    storage.failWrite = true;
+    expect(stash.deleteCharacter()).toBe(false);
+    expect(stash.hasCharacter).toBe(true);
+    storage.failWrite = false;
+    expect(stash.deleteCharacter()).toBe(true);
+    expect(stash.hasCharacter).toBe(false);
+    expect(stash.createCharacter('arcanist')).toBe(true);
+    expect(new SecuredStash(storage).preferredClass).toBe('arcanist');
+  });
+
   it('saves multi-support loadouts and trims saved supports on socket loss', () => {
     const storage = new MemoryStorage();
     const stash = new SecuredStash(storage);
