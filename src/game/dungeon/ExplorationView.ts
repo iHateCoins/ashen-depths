@@ -43,6 +43,7 @@ export class ExplorationView {
       _localY: number, event: Phaser.Types.Input.EventData) => event.stopPropagation());
     scene.scale.on(Phaser.Scale.Events.RESIZE, this.onResize);
     this.refresh(player);
+    this.syncZoom();
   }
 
   refresh(player: Point): void {
@@ -64,6 +65,20 @@ export class ExplorationView {
     }
   }
 
+  /** Keep the minimap and its pointer blocker in viewport pixels regardless of world zoom. */
+  syncZoom(): void {
+    const camera = this.scene.cameras.main;
+    const inverse = 1 / camera.zoom;
+    const x = camera.width * (1 - inverse) / 2;
+    const y = camera.height * (1 - inverse) / 2;
+    for (const target of [this.map, this.heading, this.mapHitArea]) {
+      target.setScale(inverse);
+      // Map graphics are drawn in screen coordinates; zoom compensation is a
+      // translation on the graphics object, not a mutation of the map geometry.
+    }
+    this.redrawMap(this.lastPlayer);
+  }
+
   private redrawMap(player: Point): void {
     const width = this.scene.scale.width;
     const portrait = narrowPortrait(width, this.scene.scale.height);
@@ -75,8 +90,12 @@ export class ExplorationView {
     const mapHeight = this.layout.rows * pixel;
     const left = Math.max(8 + safe.left, width - mapWidth - 12 - safe.right);
     const top = Math.max(62, safe.top + (portrait ? 69 : 60));
+    const cam = this.scene.cameras.main;
+    const anchorX = cam.width * (1 - 1 / cam.zoom) / 2;
+    const anchorY = cam.height * (1 - 1 / cam.zoom) / 2;
+    this.map.setPosition(anchorX, anchorY);
     this.mapHitArea.setSize(mapWidth + 10, mapHeight + 10)
-      .setPosition(left + mapWidth / 2, top + mapHeight / 2);
+      .setPosition(anchorX + left + mapWidth / 2, anchorY + top + mapHeight / 2);
     this.heading.setFontSize(portrait ? 9 : 12);
     this.map.clear()
       .fillStyle(0x080e11, 0.92).fillRoundedRect(left - 5, top - 5, mapWidth + 10, mapHeight + 10, 5)
@@ -114,7 +133,7 @@ export class ExplorationView {
     this.map.fillStyle(0xffffff).fillCircle(x, y, 2.5);
     this.heading
       .setText(`EXPLORED ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} ROOMS`)
-      .setPosition(left - 1, top - 25);
+      .setPosition(anchorX + left - 1, anchorY + top - 25);
   }
 
   destroy(): void {
