@@ -65,7 +65,7 @@ test('only even-depth Warden victory grants a risky point, which banks atomicall
   expect(errors).toEqual([]);
 });
 
-test('banked points are once per class, and a different class has a separate ledger',async({page})=>{
+test('banked points cannot be farmed twice and legacy alternate-class ledgers remain preserved',async({page})=>{
   await page.addInitScript(()=>{
     localStorage.setItem('ashen-depths-stash-v1',JSON.stringify({
       schema:1,revision:5,completed:3,items:[],unlocks:['skill:frost-bloom'],
@@ -77,17 +77,19 @@ test('banked points are once per class, and a different class has a separate led
   await expect(page.locator('#boot-status')).toHaveCount(0,{timeout:20000});
   expect(await readProgress(page)).toEqual({depth:1,cls:'vanguard',banked:2,pending:0});
   await activate(page,page.locator('#ashen-class-toggle'));
-  await activate(page,page.locator('#ashen-class-overlay').getByRole('button',{name:'Choose Arcanist'}));
-  expect(await readProgress(page)).toEqual({depth:1,cls:'arcanist',banked:1,pending:0});
-  await activate(page,page.locator('#ashen-class-overlay').getByRole('button',{name:'CLOSE'}));
+  const classModal=page.locator('#ashen-class-overlay');
+  await expect(classModal.getByRole('button',{name:'Choose Arcanist'})).toBeDisabled();
+  await expect(classModal).toContainText('Class is permanent');
+  expect(await readProgress(page)).toEqual({depth:1,cls:'vanguard',banked:2,pending:0});
+  await activate(page,classModal.getByRole('button',{name:'CLOSE'}));
   await beatWarden(page);
   await descend(page,2);
   await beatWarden(page);
-  expect(await readProgress(page)).toEqual({depth:2,cls:'arcanist',banked:1,pending:0});
+  expect(await readProgress(page)).toEqual({depth:2,cls:'vanguard',banked:2,pending:0});
   // Repeated Warden does not create another passive point, although it
   // remains possible to secure normal loot/skills and finish.
   await activate(page,page.getByRole('button',{name:'FINISH EXPEDITION'}));
-  await expect(page.locator('#ashen-victory-overlay')).toContainText('0 passive points secured for Arcanist');
+  await expect(page.locator('#ashen-victory-overlay')).toContainText('0 passive points secured for Vanguard');
   const save=await page.evaluate(()=>JSON.parse(localStorage.getItem('ashen-depths-stash-v1')!));
   expect(save.passiveMilestones).toEqual({vanguard:[2,4],arcanist:[2]});
   expect(save.forgeEmbers).toBe(4);
