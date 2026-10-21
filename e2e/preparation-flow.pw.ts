@@ -118,6 +118,14 @@ test('a guarded cache message never intercepts touch movement or forces a confir
   });
   await expect(hint).toBeHidden({timeout:10000});
   const objective=page.locator('#ashen-optional-objective');
+  // Defeating the cache guards may drop gear in pickup range. The interaction
+  // dock deliberately prioritizes LOOT to prevent reward panels obscuring it.
+  // Select OBJECTIVE explicitly when it is behind the LOOT tab.
+  if (!await objective.isVisible()) {
+    const objectiveTab=page.locator('#ashen-interaction-objective');
+    await expect(objectiveTab).toBeVisible({timeout:10000});
+    await press(objectiveTab);
+  }
   await expect(objective).toBeVisible();
   await expect(objective.getByRole('button',{name:'OPEN CACHE'})).toBeEnabled();
 });
