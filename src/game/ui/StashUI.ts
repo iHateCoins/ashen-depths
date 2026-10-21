@@ -37,6 +37,7 @@ export class StashUI {
     private readonly loot: ExpeditionLoot,
     onWithdraw: (id: string) => boolean,
     onReforge: (id: string, affixIndex: number) => boolean,
+    private readonly canOpen: () => boolean = () => true,
   ) {
     this.onWithdraw = onWithdraw;
     this.onReforge = onReforge;
@@ -79,6 +80,7 @@ export class StashUI {
   get isOpen(): boolean { return this.open; }
 
   openStash(): void {
+    if (!this.canOpen()) return;
     this.open = true;
     this.overlay.hidden = false;
     this.render();
@@ -140,6 +142,7 @@ export class StashUI {
   private hideoutMode = false;
   setHideoutMode(enabled: boolean): void {
     this.hideoutMode = enabled;
+    if (!enabled) this.closeStash();
     this.lastSignature = '';
     this.refresh(enabled, this.loot.bagFull);
   }
