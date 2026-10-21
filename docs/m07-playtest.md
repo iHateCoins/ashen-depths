@@ -1,6 +1,6 @@
 # Ashen Depths — Full M07 Playtest (before starting M08)
 
-**When to run:** Only after M07 PR06 is approved/merged and all CI checks pass. No separate playtesting is requested for PR05/PR06. Target **60–90 minutes** of focused gameplay plus notes; longer if useful. The test is **not complete just because CI passes**.
+**When to run:** After the new M07 title/class/skill preparation and combat UI patch is approved/merged and all CI checks pass. Target **60–90 minutes** of focused gameplay plus notes; longer if useful. The test is **not complete just because CI passes**.
 
 **Play:** https://ihatecoins.github.io/ashen-depths/ (the build deployed from main after merge). Desktop browser first; then repeat the important mobile controls on iPhone or landscape touch. If the build appears stale, reload normally but **do not clear localStorage**.
 
@@ -12,12 +12,15 @@ Use a separate private browser window/profile for risky test cases so you do not
 
 ## Session A — New character and early loop (~15–20 minutes)
 
-- [ ] Start at **Depth 1**, confirm the dungeon displays and the entrance camp UI loads without stuck overlays or missing buttons.
-- [ ] Choose **Vanguard**; inspect starting HP, basic attack reach, and automatic Crescent Cleave. Start a separate fresh character/profile as **Arcanist**, with Cinder Burst, to confirm different play styles.
+- [ ] See **ASHEN DEPTHS** title screen first. Choose **Prepare Expedition → Vanguard → Skills → Enter Dungeon**; confirm there is no combat or movement behind the preparation pages.
+- [ ] Verify the starting Crescent Cleave can be reviewed on the skill page, unlearned skills are disabled, support choices are limited to earned supports, and entering requires at least one selected active skill.
+- [ ] After **Enter Dungeon**, confirm the Depth 1 playfield, HUD and entrance camp controls load without stuck overlays or missing buttons. Inspect Vanguard's starting HP, attack reach and Crescent Cleave. On a separate new expedition, choose **Arcanist** and Cinder Burst.
+- [ ] Check that changing class reports a storage failure rather than silently switching if browser storage cannot save, and that prior stash/passive progress remains unchanged.
 - [ ] Tap/click to move; navigate branching halls, avoid walls, inspect fog/minimap, zoom on desktop, and verify movement does not mis-target under floating DOM controls.
 - [ ] Fight normal enemies and a brute; evaluate enemy telegraphs, collision, automatic targeting and whether dodging feels intentional rather than random.
 - [ ] Pick up equipment, compare its stat contributions, equip/unequip, discard/reclaim, and check the 24-item expedition bag constraint.
-- [ ] Open a Sealed Cache; select an actual discovery (skill, support or Forge Ember) from the reward chooser. Leaving a reward unclaimed should warn before exit, not silently grant it.
+- [ ] Approach a **guarded** Sealed Cache while fighting; confirm its guardian-count message is a **small non-interactive hint** with no huge disabled GUARDed pop-up, and that movement taps continue through the notice.
+- [ ] After killing the cache guardians, confirm **Open Cache** appears as a deliberate action, and select an actual discovery (skill, support or Forge Ember) from the reward chooser. Leaving a reward unclaimed should warn before exit, not silently grant it.
 - [ ] Defeat the original **Depth 1 Warden**. Verify **Finish Expedition** and **Descend** both become available. Descend only by explicit selection; Warden must not force an exit.
 - [ ] Verify defeating Depth 1 does **not** grant a passive point.
 
@@ -30,7 +33,7 @@ Use a separate private browser window/profile for risky test cases so you do not
 - [ ] Continue to **Depth 3** in a separate run or when strong enough. Confirm fast **skirmishers**, some **elite** packs, and the wide slow windup of the **Stone Sentinel**. Elite kills should consistently yield at least magic loot.
 - [ ] Reach **Depth 4** and defeat its Warden: when Depths 2 and 4 are first-time clears for that class, you should now have **two unsecured points** (or only one if Depth 2 was previously banked).
 - [ ] Extract. Confirm the results screen reports the actual Depth, stored gear, chosen skills/supports/Embers and permanently secured points, all together. The gear worn and in the bag both become secured.
-- [ ] Start another expedition: bag and health reset; stash, chosen class, skill unlocks, Ember balance and **banked passive points remain**.
+- [ ] Start another expedition: return to the **title → class → skill** pages; bag and health reset, but stash, chosen class, skill unlocks, Ember balance and **banked passive points remain**. Descending inside an expedition must not reopen preparation.
 - [ ] Repeat an even-depth Warden milestone in that same class. It may still yield loot/discoveries, but must **not** give another permanent passive point.
 
 ## Session C — Persistent builds (~15–20 minutes)

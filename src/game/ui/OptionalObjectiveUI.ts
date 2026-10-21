@@ -10,6 +10,7 @@ export class OptionalObjectiveUI {
   private readonly title: HTMLElement;
   private readonly description: HTMLElement;
   private readonly button: HTMLButtonElement;
+  private readonly hint: HTMLElement;
   private currentId: OptionalObjectiveKind | null = null;
   private lastKey = '';
 
@@ -35,7 +36,15 @@ export class OptionalObjectiveUI {
     });
 
     root.append(title, description, button);
-    document.body.append(root);
+    const hint = document.createElement('aside');
+    hint.id = 'ashen-objective-hint';
+    hint.className = 'ashen-objective-hint';
+    hint.hidden = true;
+    hint.setAttribute('role', 'status');
+    hint.setAttribute('aria-live', 'polite');
+    // The guarded/healthy explanation must NEVER intercept movement taps.
+    document.body.append(root, hint);
+    this.hint = hint;
     this.root = root;
     this.title = title;
     this.description = description;
@@ -48,36 +57,40 @@ export class OptionalObjectiveUI {
       return;
     }
     const key = `${prompt.objective.id}:${prompt.availability}:${prompt.remainingGuards}`;
-    if (key === this.lastKey && !this.root.hidden) return;
+    if (key === this.lastKey &&
+        ((prompt.availability === 'ready' && !this.root.hidden) ||
+         (prompt.availability !== 'ready' && !this.hint.hidden))) return;
     this.lastKey = key;
     this.currentId = prompt.objective.id;
+    const cache = prompt.objective.id === 'cache';
+    if (prompt.availability !== 'ready') {
+      this.root.hidden = true;
+      this.hint.hidden = false;
+      this.hint.textContent = prompt.availability === 'guarded'
+        ? `SEALED CACHE · ${prompt.remainingGuards} guardian${prompt.remainingGuards===1?'':'s'} remaining`
+        : 'SANCTUARY · Full health';
+      return;
+    }
+    this.hint.hidden = true;
     this.root.hidden = false;
     this.title.textContent = prompt.objective.label;
-
-    const cache = prompt.objective.id === 'cache';
-    const description = prompt.availability === 'guarded'
-      ? `Defeat ${prompt.remainingGuards} remaining cache guardian${prompt.remainingGuards === 1 ? '' : 's'} to unlock this reward.`
-      : prompt.availability === 'healthy'
-        ? 'Already at full health. Return when wounded.'
-        : cache
-          ? 'Open for Ember Edge: +10 basic-attack damage for this expedition.'
-          : 'Restore up to 35 health. Can be used once per expedition.';
-
-    this.description.textContent = description;
-    this.button.textContent = prompt.availability === 'guarded' ? 'GUARDED'
-      : prompt.availability === 'healthy' ? 'HEALTH FULL'
-        : cache ? 'OPEN CACHE' : 'USE SHRINE';
-    this.button.disabled = prompt.availability !== 'ready';
+    this.description.textContent = cache
+      ? 'Open for Ember Edge: +10 basic-attack damage for this expedition.'
+      : 'Restore up to 35 health. Can be used once per expedition.';
+    this.button.textContent = cache ? 'OPEN CACHE' : 'USE SHRINE';
+    this.button.disabled = false;
   }
 
   hide(): void {
-    if (this.root.hidden) return;
+    if (this.root.hidden && this.hint.hidden) return;
+    this.hint.hidden = true;
     this.currentId = null;
     this.lastKey = '';
     this.root.hidden = true;
   }
 
   destroy(): void {
+    this.hint.remove();
     this.root.remove();
   }
 }

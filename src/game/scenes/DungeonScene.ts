@@ -31,6 +31,7 @@ import { canDescend, seedForDepth } from '../dungeon/DepthProgression';
 import { enemyHealthMultiplier, enemyStrikeDepthBonus, threatAtDepth } from '../dungeon/DepthBalance';
 import { SkillRewardUI } from '../ui/SkillRewardUI';
 import { ClassSelectionUI } from '../ui/ClassSelectionUI';
+import { PreparationUI } from '../ui/PreparationUI';
 import { narrowPortrait, viewportInsets } from '../ui/ViewportLayout';
 import { CHARACTER_CLASSES, type CharacterClassId } from '../character/CharacterClasses';
 import { PassiveMilestoneProgress } from '../character/PassiveMilestones';
@@ -103,6 +104,7 @@ export class DungeonScene extends Phaser.Scene {
   private progression!: SkillProgression;
   private rewardUi!: SkillRewardUI;
   private classUi!: ClassSelectionUI;
+  private preparationUi!: PreparationUI;
   private selectedClass: CharacterClassId = 'arcanist';
   private passives!: PassiveMilestoneProgress;
   private passiveTree!: PassiveTreeProgress;
@@ -202,7 +204,7 @@ export class DungeonScene extends Phaser.Scene {
     this.cameras.main.setZoom(this.zoom);
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen || this.rewardUi.isOpen || this.classUi.isOpen) return;
+      if (this.preparationUi?.isOpen || this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen || this.rewardUi.isOpen || this.classUi.isOpen) return;
       if (this.extraction.phase === 'channeling') this.cancelExtraction();
       if (pointer.event instanceof MouseEvent && pointer.event.button !== 0) return;
       const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
@@ -291,6 +293,25 @@ export class DungeonScene extends Phaser.Scene {
     this.defeatOverlay = new ResultOverlay('defeat', () => this.scene.restart({ kind: 'fresh' }));
     this.victoryOverlay = new ResultOverlay('victory', () => this.scene.restart({ kind: 'fresh' }));
     this.extractionOverlay = new ResultOverlay('extraction', () => this.scene.restart({ kind: 'fresh' }));
+    // The localhost Playwright harness retains legacy direct-dungeon tests.
+    // Real players always enter preparation first. ?intro=1 opts local tests
+    // into the complete pre-expedition flow.
+    const localHarness = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    const prepare = !carry && (!localHarness ||
+      new URLSearchParams(window.location.search).get('intro') === '1');
+    this.preparationUi = new PreparationUI(
+      () => this.selectedClass,
+      id => this.changeClass(id),
+      this.skills,
+      this.progression,
+      () => {
+        this.updateObjectiveStatus();
+        document.documentElement.dataset.ashenPreparation = 'entered';
+      },
+      prepare,
+    );
+    document.documentElement.dataset.ashenPreparation = prepare ? 'title' : 'entered';
+    const preparationUi = this.preparationUi;
     const defeatOverlay = this.defeatOverlay;
     const victoryOverlay = this.victoryOverlay;
     const explorationView = this.explorationView;
@@ -315,6 +336,7 @@ export class DungeonScene extends Phaser.Scene {
       skillUi.destroy();
       rewardUi.destroy();
       classUi.destroy();
+      preparationUi.destroy();
       extractionOverlay.destroy();
     });
     this.debugButton = this.add.text(0, 8, 'DEBUG: OFF', {fontFamily:'Arial, sans-serif',fontSize:'14px',color:'#e3c99c',backgroundColor:'#243136',padding:{x:10,y:8}}).setScrollFactor(0).setDepth(110).setInteractive();
@@ -1002,7 +1024,7 @@ export class DungeonScene extends Phaser.Scene {
     if (this.extraction.phase === 'channeling' &&
         (this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen ||
          this.rewardUi.isOpen || this.classUi.isOpen)) this.cancelExtraction();
-    if(this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen || this.rewardUi.isOpen || this.classUi.isOpen) return;
+    if(this.preparationUi?.isOpen || this.health.defeated || this.finalized || this.lootUi.isOpen || this.stashUi.isOpen || this.skillUi.isOpen || this.rewardUi.isOpen || this.classUi.isOpen) return;
     const hpBeforeFrame = this.health.hp;
     const oldX = this.movement.position.x;
     const oldY = this.movement.position.y;
