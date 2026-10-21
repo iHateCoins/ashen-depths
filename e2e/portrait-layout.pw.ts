@@ -88,9 +88,9 @@ test('portrait iPhone controls remain visible, independently tappable and clear 
   }
 });
 
-/** Verify the landscape build rather than assuming a viewport-size change took
- * effect: mobile WebKit may retain its original layout viewport dimensions in
- * Playwright even after page.setViewportSize() on an already-loaded page. */
+/** Browser mobile viewport emulation sometimes retains the original layout
+ * viewport despite page.setViewportSize(), in both WebKit and mobile Chromium.
+ * Testing independent landscape contexts verifies actual rendered layouts. */
 async function assertLandscape(page:Page):Promise<void>{
   await expect.poll(()=>page.evaluate(()=>{
     const scene=(window as any).__ashenE2eGame.scene.getScene('DungeonScene') as any;
@@ -122,18 +122,16 @@ async function assertPortrait(page:Page):Promise<void>{
     expect(overlapping(hud,g.map)).toBe(false);
 }
 
-test('both orientations show unclipped HUD and tappable controls; Chromium also live-rotates',async({page,browser})=>{
+test('both orientations show unclipped HUD and tappable controls; desktop also live-resizes',async({page,browser})=>{
   await page.setViewportSize({width:390,height:844});
   await page.goto(url);
   await expect(page.locator('#boot-status')).toHaveCount(0,{timeout:20000});
   await assertPortrait(page);
-  if (test.info().project.name === 'iphone-safari') {
-    // WebKit mobile emulation does not reliably alter the layout viewport on
-    // page.setViewportSize() once loaded. The previous test falsely assumed
-    // window.innerWidth would change and failed with 390 !== 844 despite 58
-    // other Safari tests passing. Use a real NEW landscape WebKit browsing
-    // context so Phaser initializes from the actual layout viewport.
-    // Chromium still verifies live rotation below.
+  if (test.info().project.name !== 'desktop') {
+    // Playwright's isMobile viewport emulation may retain innerWidth=390 after
+    // resizing an already-loaded page, for both mobile Chromium and WebKit.
+    // Check the actual landscape Phaser render in an independently initialized
+    // mobile context; do not mistake an emulation resize for a game bug.
     const landscape = await browser.newContext({
       viewport:{width:844,height:390}, isMobile:true, hasTouch:true,
     });
@@ -145,11 +143,11 @@ test('both orientations show unclipped HUD and tappable controls; Chromium also 
     } finally {
       await landscape.close();
     }
-    // Original portrait WebKit context remains valid, independently verifying
-    // both orientations rather than silently skipping the test.
     await assertPortrait(page);
     return;
   }
+  // Desktop Chromium supports updating the effective layout viewport, so
+  // continue checking the in-page resize path in both directions.
   await page.setViewportSize({width:844,height:390});
   await assertLandscape(page);
   await page.setViewportSize({width:390,height:844});
