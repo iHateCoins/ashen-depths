@@ -27,6 +27,31 @@ class MemoryStorage implements StashStorage {
 }
 
 describe('secured stash persistence and transactions', () => {
+  it('keeps skill socket capacities separate and bounds zero through six', () => {
+    const storage = new MemoryStorage();
+    const stash = new SecuredStash(storage);
+    expect(stash.socketsFor('cinder-burst')).toBe(0);
+    expect(stash.socketsFor('frost-bloom')).toBe(0);
+    expect(stash.craftSkillSocket('unknown')).toBe('invalid-skill');
+    expect(stash.craftSkillSocket('cinder-burst')).toBe('no-embers');
+    expect(stash.secureExpedition([], [], 40).ok).toBe(true);
+    for (let i = 0; i < 35; i++) {
+      const result = stash.craftSkillSocket('cinder-burst');
+      expect(['removed', 'unchanged', 'added']).toContain(result);
+      expect(stash.socketsFor('cinder-burst')).toBeGreaterThanOrEqual(0);
+      expect(stash.socketsFor('cinder-burst')).toBeLessThanOrEqual(6);
+    }
+    expect(stash.forgeEmbers).toBe(5);
+    expect(new SecuredStash(storage).socketsFor('cinder-burst'))
+      .toBe(stash.socketsFor('cinder-burst'));
+    expect(new SecuredStash(storage).socketsFor('frost-bloom')).toBe(0);
+    storage.failWrite = true;
+    const before = stash.socketsFor('cinder-burst');
+    expect(stash.craftSkillSocket('cinder-burst')).toBe('storage-error');
+    expect(stash.socketsFor('cinder-burst')).toBe(before);
+    expect(stash.forgeEmbers).toBe(5);
+  });
+
   it('tracks a tower checkpoint only on a successful, completed-floor extraction', () => {
     const storage = new MemoryStorage();
     const stash = new SecuredStash(storage);
