@@ -345,6 +345,7 @@ export class DungeonScene extends Phaser.Scene {
       () => this.stashUi.openStash(),
       () => this.classUi.openFromHideout(),
     );
+    document.documentElement.dataset.ashenHideoutRules = (!localHarness || new URLSearchParams(window.location.search).get('intro') === '1') ? 'true' : 'false';
     document.documentElement.dataset.ashenPreparation = prepare ? 'title' : 'entered';
     const preparationUi = this.preparationUi;
     const defeatOverlay = this.defeatOverlay;
