@@ -98,11 +98,27 @@ export class PreparationUI {
     this.render();
   }
 
+  /** Hideout actions are explicitly callable only while preparation is open. */
+  addHideoutActions(openStash: () => void, openPassives: () => void): void {
+    this.hideoutStash = openStash;
+    this.hideoutPassives = openPassives;
+    if (this.open) this.render();
+  }
+  private hideoutStash: (() => void) | null = null;
+  private hideoutPassives: (() => void) | null = null;
+
   private render(): void {
     if (!this.open) return;
     this.contents.replaceChildren();
     this.actions.replaceChildren();
     this.error.hidden = true;
+    if (this.hideoutStash || this.hideoutPassives) {
+      const management = document.createElement('div');
+      management.className = 'ashen-preparation-actions';
+      if (this.hideoutStash) management.append(this.button('HIDEOUT STASH & ITEM FORGE', this.hideoutStash, true));
+      if (this.hideoutPassives) management.append(this.button('HIDEOUT PASSIVE TREE', this.hideoutPassives, true));
+      this.contents.append(management);
+    }
     if (this.step === 'title') {
       this.root.dataset.step = 'title';
       this.heading.textContent = 'ASHEN DEPTHS';
