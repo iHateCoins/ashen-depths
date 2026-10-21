@@ -1,4 +1,5 @@
 import { lootHash, AFFIX_NAMES, AFFIX_POOLS, maximumAffixTier, type LootItem, type ItemAffix } from './ExpeditionLoot';
+import { ACTIVE_SKILLS } from '../combat/AutoSkillSystem';
 import { isValidUnlockId, UNLOCK_CHOICES } from '../combat/SkillProgression';
 import { DEFAULT_CHARACTER_CLASS, isCharacterClassId, type CharacterClassId } from '../character/CharacterClasses';
 import { clonePassiveLedger, validPassiveDepth, validPassiveLedger,
@@ -23,6 +24,8 @@ interface StashSnapshot {
   completed: number;
   /** Highest tower floor unlocked by an extracted Warden victory. */
   highestUnlockedDepth?: number;
+  /** Skill-owned permanent support capacity, independently crafted per skill. */
+  skillSockets?: Record<string, number>;
   items: LootItem[];
   /** Absent in older schema-1 saves; treat as no learned skills. */
   unlocks?: string[];
@@ -77,6 +80,15 @@ function validItem(value: unknown): value is LootItem {
   );
 }
 
+export const MAX_SKILL_SOCKETS = 6;
+export type SocketOutcome = 'removed' | 'unchanged' | 'added' | 'storage-error' | 'invalid-skill' | 'no-embers';
+const skillIds = new Set(ACTIVE_SKILLS.map(skill => skill.id));
+function validSockets(value: unknown): value is Record<string, number> {
+  return !!value && typeof value === 'object' && !Array.isArray(value) &&
+    Object.entries(value).every(([id, count]) => skillIds.has(id) &&
+      Number.isSafeInteger(count) && count >= 0 && count <= MAX_SKILL_SOCKETS);
+}
+
 function parseSnapshot(raw: string): StashSnapshot | null {
   try {
     const value: unknown = JSON.parse(raw);
@@ -84,6 +96,7 @@ function parseSnapshot(raw: string): StashSnapshot | null {
     const data = value as Partial<StashSnapshot>;
     if (data.schema !== 1 || !Number.isSafeInteger(data.revision) || data.revision! < 0 ||
         !Number.isSafeInteger(data.completed) || data.completed! < 0 ||
+        (data.skillSockets !== undefined && !validSockets(data.skillSockets)) ||
         (data.highestUnlockedDepth !== undefined &&
           (!Number.isSafeInteger(data.highestUnlockedDepth) ||
            data.highestUnlockedDepth < 1 || data.highestUnlockedDepth > 497)) ||
@@ -161,6 +174,26 @@ export class SecuredStash {
   get completedExpeditions(): number { return this.data.completed; }
   /** Legacy saves default to the first floor without resetting any stored rewards. */
   get highestUnlockedDepth(): number { return this.data.highestUnlockedDepth ?? 1; }
+  socketsFor(skillId: string): number { return this.data.skillSockets?.[skillId] ?? 0; }
+  /** Spend one secured Ember for an equip-independent skill capacity attempt. */
+  craftSkillSocket(skillId: string): SocketOutcome {
+    if (this.state !== 'ready') return 'storage-error';
+    if (!skillIds.has(skillId)) return 'invalid-skill';
+    if (this.forgeEmbers < 1) return 'no-embers';
+    const hash = [...skillId].reduce((n, ch) => lootHash(n, ch.charCodeAt(0)), this.data.revision + 917);
+    const outcome = hash % 3;
+    const old = this.socketsFor(skillId);
+    const nextCount = outcome === 0 ? Math.max(0, old - 1) :
+      outcome === 2 ? Math.min(MAX_SKILL_SOCKETS, old + 1) : old;
+    const next: StashSnapshot = {
+      ...this.data, revision: this.data.revision + 1,
+      forgeEmbers: this.forgeEmbers - 1,
+      skillSockets: { ...this.data.skillSockets, [skillId]: nextCount },
+    };
+    if (!this.commit(next)) return 'storage-error';
+    this.spendableEmbers = Math.max(0, this.spendableEmbers - 1);
+    return nextCount < old ? 'removed' : nextCount > old ? 'added' : 'unchanged';
+  }
   get items(): readonly LootItem[] { return this.data.items.map(cloneItem); }
   get unlockedIds(): readonly string[] { return [...(this.data.unlocks ?? [])]; }
   get forgeEmbers(): number { return this.data.forgeEmbers ?? 0; }
@@ -267,6 +300,7 @@ export class SecuredStash {
       schema: 1,
       revision,
       completed: this.data.completed + 1,
+      ...(this.data.skillSockets ? { skillSockets: { ...this.data.skillSockets } } : {}),
       highestUnlockedDepth: Math.max(this.highestUnlockedDepth,
         defeatedWardenDepth === undefined ? 1 : Math.min(497, defeatedWardenDepth + 1)),
       items: [...this.data.items, ...secured],
