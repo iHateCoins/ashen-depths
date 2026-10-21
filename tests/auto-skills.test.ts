@@ -6,6 +6,23 @@ const enemy = (id: number, x: number, y = 0, hp = 100): Enemy =>
   ({ id, position: { x, y }, hp, maxHp: 100 });
 
 describe('automatic skill selection', () => {
+  it('stacks support effects subject to crafted socket capacity', () => {
+    const skills = new AutoSkillSystem([CINDER_BURST, FROST_BLOOM]);
+    skills.setSupportCapacity('cinder-burst', 0);
+    expect(() => skills.setSupports('cinder-burst', ['focused-power'])).toThrow();
+    skills.setSupportCapacity('cinder-burst', 2);
+    skills.setSupports('cinder-burst', ['focused-power', 'swift-casting']);
+    expect(skills.supportsFor('cinder-burst').map(support => support.id))
+      .toEqual(['focused-power', 'swift-casting']);
+    expect(skills.effectiveStats('cinder-burst').damage).toBe(Math.round(35 * 1.35 * 0.8));
+    expect(() => skills.setSupports('frost-bloom', ['focused-power'])).toThrow();
+    expect(() => skills.setSupports('cinder-burst', ['focused-power', 'focused-power'])).toThrow();
+    skills.setSupportCapacity('cinder-burst', 1);
+    expect(skills.supportsFor('cinder-burst')).toHaveLength(1);
+    skills.setSupportCapacity('cinder-burst', 0);
+    expect(skills.supportsFor('cinder-burst')).toHaveLength(0);
+  });
+
   it('casts by itself, damages clustered enemies and returns presentation events', () => {
     const system = new AutoSkillSystem();
     const targets = [enemy(1, 70), enemy(2, 120), enemy(3, 220)];
