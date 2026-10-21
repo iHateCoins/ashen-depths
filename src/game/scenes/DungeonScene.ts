@@ -800,6 +800,7 @@ export class DungeonScene extends Phaser.Scene {
       items, this.progression.pendingUnlocks, this.progression.pendingForgeEmbers,
       { classId: this.selectedClass, depths: this.passives.pendingDepths },
       this.roomEncounters.completed ? this.depth : undefined,
+      EQUIPMENT_SLOTS.map(slot => this.loadout.get(slot)?.id).filter((id): id is string => id !== undefined),
     );
     if (!result.ok) {
       const message = result.reason === 'storage-full'
