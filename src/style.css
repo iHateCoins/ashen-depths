@@ -907,3 +907,90 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
   }
   .ashen-finish-warning {max-width:100%;}
 }
+
+/* M07 staging: a title -> class -> skills entry flow, designed to become the
+   persistent hideout without building hideout world mechanics prematurely. */
+.ashen-preparation-overlay {
+  position:fixed;inset:0;z-index:2400;box-sizing:border-box;
+  padding:max(18px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right))
+    max(18px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));
+  display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(ellipse at 50% 22%,#34352c 0%,#151e24 45%,#080f15 100%);
+  color:#f3e4cc;touch-action:pan-y;
+}
+.ashen-preparation-overlay[hidden]{display:none;}
+.ashen-preparation-panel{
+  box-sizing:border-box;width:min(720px,100%);max-height:100%;
+  overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;
+  padding:clamp(16px,4vw,32px);border:1px solid #987d5e;border-radius:12px;
+  background:#182329f3;box-shadow:0 18px 60px #000b;
+  font:14px/1.5 Arial,sans-serif;
+}
+.ashen-preparation-eyebrow{color:#c5ad89;font:600 11px Arial,sans-serif;letter-spacing:.16em;}
+.ashen-preparation-panel h1{
+  font:clamp(30px,7vw,56px)/1.12 Georgia,serif;letter-spacing:.04em;
+  color:#eddbaf;margin:13px 0 15px;
+}
+.ashen-preparation-detail{color:#d6dbd5;font-size:15px;max-width:600px;}
+.ashen-preparation-summary{
+  padding:12px;border:1px solid #526960;border-radius:7px;
+  background:#243832;color:#d0e7d5;margin:16px 0;
+}
+.ashen-preparation-actions{
+  display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;margin-top:22px;
+}
+.ashen-preparation-next,.ashen-preparation-back,.ashen-preparation-class-choice,
+.ashen-preparation-skill button{
+  min-height:48px;border:1px solid #ddbd89;border-radius:8px;
+  background:#705439;color:#fff0d2;padding:10px 18px;
+  font:600 14px Arial,sans-serif;touch-action:manipulation;cursor:pointer;
+}
+.ashen-preparation-back{background:#273740;border-color:#77919a;}
+.ashen-preparation-classes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+.ashen-preparation-class-choice{
+  text-align:left;white-space:pre-line;line-height:1.8;
+  background:#26343b;min-height:165px;color:#f4dfb9;
+}
+.ashen-preparation-class-choice[data-selected="true"]{background:#36483c;border-color:#b9dc9a;}
+.ashen-preparation-skills{display:grid;gap:9px;}
+.ashen-preparation-skill{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;
+  gap:9px;padding:10px;border:1px solid #536269;border-radius:8px;background:#253139;
+}
+.ashen-preparation-skill select{
+  grid-column:1/-1;width:100%;min-height:44px;padding:8px;
+  font:13px Arial,sans-serif;background:#e1e1d6;color:#10191b;
+}
+.ashen-preparation-skill button{min-width:100px;}
+.ashen-preparation-skill button:disabled{opacity:.55;cursor:default;}
+.ashen-preparation-error{color:#ffd3ac;}
+.ashen-preparation-next:focus-visible,.ashen-preparation-back:focus-visible,
+.ashen-preparation-class-choice:focus-visible,
+.ashen-preparation-skill button:focus-visible{outline:3px solid #f0dbab;outline-offset:2px;}
+/* Unavailable objectives are facts, never an interaction or a blocking modal.
+   Keep all touches passing to the live Phaser canvas. */
+.ashen-objective-hint {
+  position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(172px + env(safe-area-inset-bottom));
+  z-index:1190;width:max-content;max-width:calc(100vw - 30px);
+  padding:8px 12px;box-sizing:border-box;
+  border:1px solid #998566;border-radius:8px;
+  background:#192528dd;color:#f0d9b1;
+  text-align:center;font:600 12px/1.3 Arial,sans-serif;
+  pointer-events:none;user-select:none;
+}
+.ashen-objective-hint[hidden]{display:none;}
+@media(max-width:600px){
+  .ashen-preparation-panel{padding:16px;}
+  .ashen-preparation-classes{grid-template-columns:1fr;}
+  .ashen-preparation-class-choice{min-height:116px;}
+  .ashen-preparation-actions > button{flex:1;}
+  .ashen-objective-hint{bottom:calc(191px + env(safe-area-inset-bottom));font-size:11px;}
+}
+@media(max-height:460px){
+  .ashen-preparation-overlay{align-items:flex-start;}
+  .ashen-preparation-panel h1{font-size:31px;}
+  .ashen-preparation-panel{padding:10px 14px;}
+  .ashen-preparation-class-choice{min-height:100px;}
+  .ashen-objective-hint{bottom:calc(80px + env(safe-area-inset-bottom));}
+}
