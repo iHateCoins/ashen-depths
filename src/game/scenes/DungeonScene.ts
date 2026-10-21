@@ -5,7 +5,7 @@ import { findPath } from '../navigation/Pathfinder';
 import { DirectionalAnimator } from '../rendering/DirectionalAnimator';
 import { createDebugOptions, toggleDebug, type DebugOptions } from '../debug/DebugOptions';
 import { AutoCombat } from '../combat/AutoCombat';
-import { AutoSkillSystem } from '../combat/AutoSkillSystem';
+import { ACTIVE_SKILLS, AutoSkillSystem } from '../combat/AutoSkillSystem';
 import { createEnemyAgent, ENEMY_ARCHETYPES, updateEnemyAgents, type EnemyAgent } from '../combat/EnemyAI';
 import { WARDEN_VARIANTS, wardenForDepth, eliteCombatProfile } from '../combat/DepthEncounters';
 import { PlayerHealth } from '../combat/PlayerHealth';
@@ -314,7 +314,7 @@ export class DungeonScene extends Phaser.Scene {
       new URLSearchParams(window.location.search).get('intro') === '1');
     this.preparationUi = new PreparationUI(
       () => this.selectedClass,
-      id => this.changeClass(id),
+      (id, skillId) => this.changeClass(id, skillId),
       this.skills,
       this.progression,
       depth => {
@@ -749,11 +749,11 @@ export class DungeonScene extends Phaser.Scene {
       !this.stashUi.isOpen && !this.skillUi.isOpen && !this.rewardUi.isOpen;
   }
 
-  private changeClass(id: CharacterClassId): boolean {
+  private changeClass(id: CharacterClassId, startingSkillId?: string): boolean {
     if (!this.canChangeClass() || this.securedStash.hasCharacter) return false;
     const previous = this.selectedClass;
     if (id !== previous && !this.progression.setCharacterClass(id)) return false;
-    if (!this.securedStash.createCharacter(id)) {
+    if (!this.securedStash.createCharacter(id, startingSkillId)) {
       if (id !== previous) this.progression.setCharacterClass(previous);
       return false;
     }
@@ -763,7 +763,8 @@ export class DungeonScene extends Phaser.Scene {
       this.securedStash.passivePointsFor(id));
     const cls = CHARACTER_CLASSES[id];
     this.combat = new AutoCombat(cls.basicRange, cls.basicDamage, cls.basicInterval);
-    this.skills.setEquipped([cls.startingSkill]);
+    const initialSkill = ACTIVE_SKILLS.find(skill => skill.id === startingSkillId) ?? cls.startingSkill;
+    this.skills.setEquipped([initialSkill]);
     this.recalculateEquipment();
     this.healthLabel.setText(`HP: ${this.health.hp} / ${this.health.maxHp}`);
     this.updateObjectiveStatus();
