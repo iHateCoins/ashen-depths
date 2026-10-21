@@ -21,6 +21,8 @@ interface StashSnapshot {
   schema: 1;
   revision: number;
   completed: number;
+  /** Highest tower floor unlocked by an extracted Warden victory. */
+  highestUnlockedDepth?: number;
   items: LootItem[];
   /** Absent in older schema-1 saves; treat as no learned skills. */
   unlocks?: string[];
@@ -82,6 +84,9 @@ function parseSnapshot(raw: string): StashSnapshot | null {
     const data = value as Partial<StashSnapshot>;
     if (data.schema !== 1 || !Number.isSafeInteger(data.revision) || data.revision! < 0 ||
         !Number.isSafeInteger(data.completed) || data.completed! < 0 ||
+        (data.highestUnlockedDepth !== undefined &&
+          (!Number.isSafeInteger(data.highestUnlockedDepth) ||
+           data.highestUnlockedDepth < 1 || data.highestUnlockedDepth > 497)) ||
         !Array.isArray(data.items) || data.items.length > STASH_CAPACITY ||
         !data.items.every(validItem) ||
         (data.preferredClass !== undefined && !isCharacterClassId(data.preferredClass)) ||
@@ -154,6 +159,8 @@ export class SecuredStash {
   get status(): StashStatus { return this.state; }
   get count(): number { return this.data.items.length; }
   get completedExpeditions(): number { return this.data.completed; }
+  /** Legacy saves default to the first floor without resetting any stored rewards. */
+  get highestUnlockedDepth(): number { return this.data.highestUnlockedDepth ?? 1; }
   get items(): readonly LootItem[] { return this.data.items.map(cloneItem); }
   get unlockedIds(): readonly string[] { return [...(this.data.unlocks ?? [])]; }
   get forgeEmbers(): number { return this.data.forgeEmbers ?? 0; }
@@ -207,8 +214,14 @@ export class SecuredStash {
     items: readonly LootItem[], unlocks: readonly string[] = [],
     forgeEmbers = 0,
     passives?: { classId: CharacterClassId; depths: readonly number[] },
+    defeatedWardenDepth?: number,
   ): StashOutcome {
     if (this.state !== 'ready') return this.failure();
+    if (defeatedWardenDepth !== undefined &&
+        (!Number.isSafeInteger(defeatedWardenDepth) ||
+         defeatedWardenDepth < 1 || defeatedWardenDepth > 497)) {
+      return { ok: false, saved: 0, reason: 'invalid-items' };
+    }
     if (!items.every(validItem) || new Set(items.map(item => item.id)).size !== items.length) {
       return { ok: false, saved: 0, reason: 'invalid-items' };
     }
@@ -254,6 +267,8 @@ export class SecuredStash {
       schema: 1,
       revision,
       completed: this.data.completed + 1,
+      highestUnlockedDepth: Math.max(this.highestUnlockedDepth,
+        defeatedWardenDepth === undefined ? 1 : Math.min(497, defeatedWardenDepth + 1)),
       items: [...this.data.items, ...secured],
       unlocks: [...new Set([...(this.data.unlocks ?? []), ...unlocks])],
       forgeEmbers: this.forgeEmbers + forgeEmbers,
