@@ -391,6 +391,26 @@ export class SecuredStash {
     return true;
   }
 
+  /**
+   * Commit the transfer of every equipped item from safe storage into an
+   * at-risk expedition, in one write. Never returns equipment on failure.
+   * Death must not put these items back; extraction is the only secure path.
+   */
+  withdrawEquippedForExpedition(): LootItem[] | null {
+    if (this.state !== 'ready') return null;
+    const equipped = this.equippedItems;
+    if (equipped.length === 0) return [];
+    const ids = new Set(equipped.map(item => item.id));
+    const next: StashSnapshot = {
+      ...this.data,
+      revision: this.data.revision + 1,
+      items: this.data.items.filter(item => !ids.has(item.id)),
+      equippedItemIds: [],
+    };
+    if (!this.commit(next)) return null;
+    return equipped.map(cloneItem);
+  }
+
   /** Remove a secured item BEFORE placing it in the risky expedition bag. */
   withdraw(id: string): LootItem | null {
     if (this.state !== 'ready') return null;
