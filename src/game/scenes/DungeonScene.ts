@@ -781,6 +781,7 @@ export class DungeonScene extends Phaser.Scene {
     const result = this.securedStash.secureExpedition(
       items, this.progression.pendingUnlocks, this.progression.pendingForgeEmbers,
       { classId: this.selectedClass, depths: this.passives.pendingDepths },
+      this.roomEncounters.completed ? this.depth : undefined,
     );
     if (!result.ok) {
       const message = result.reason === 'storage-full'
