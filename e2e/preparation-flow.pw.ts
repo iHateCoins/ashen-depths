@@ -123,6 +123,9 @@ test('successful extraction returns to preparation, while Warden descent stays i
   const intro=page.locator('#ashen-preparation-overlay');
   await expect(intro).toHaveAttribute('data-step','hideout');
   await expect(intro).toContainText('Your Vanguard is permanent');
+  await expect(intro.getByRole('button',{name:'PREPARE EXPEDITION'})).toBeVisible();
+  await press(intro.getByRole('button',{name:'RETURN TO TITLE'}));
+  await expect(intro).toHaveAttribute('data-step','title');
   await expect(intro.getByRole('button',{name:'LOAD CHARACTER'})).toBeVisible();
 });
 
