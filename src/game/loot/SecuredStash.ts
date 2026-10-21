@@ -27,6 +27,8 @@ interface StashSnapshot {
   /** Skill-owned permanent support capacity, independently crafted per skill. */
   skillSockets?: Record<string, number>;
   items: LootItem[];
+  /** Equipped item IDs reference secured items, not duplicate copies. */
+  equippedItemIds?: string[];
   /** Absent in older schema-1 saves; treat as no learned skills. */
   unlocks?: string[];
   /** Optional since pre-M05 PR06 saves predate the forge. */
@@ -113,6 +115,13 @@ function parseSnapshot(raw: string): StashSnapshot | null {
           new Set(data.unlocks).size !== data.unlocks.length))) return null;
     const ids = data.items.map(item => item.id);
     if (new Set(ids).size !== ids.length) return null;
+    if (data.equippedItemIds !== undefined) {
+      if (!Array.isArray(data.equippedItemIds) || data.equippedItemIds.length > 3 ||
+          data.equippedItemIds.some(id => typeof id !== 'string' || !ids.includes(id)) ||
+          new Set(data.equippedItemIds).size !== data.equippedItemIds.length) return null;
+      const equipped = data.items.filter(item => data.equippedItemIds!.includes(item.id));
+      if (new Set(equipped.map(item => item.slot)).size !== equipped.length) return null;
+    }
     return data as StashSnapshot;
   } catch {
     return null;
@@ -195,6 +204,10 @@ export class SecuredStash {
     return nextCount < old ? 'removed' : nextCount > old ? 'added' : 'unchanged';
   }
   get items(): readonly LootItem[] { return this.data.items.map(cloneItem); }
+  /** The character's retained loadout, stored within the same secured item inventory. */
+  get equippedItems(): readonly LootItem[] {
+    return this.data.items.filter(item => this.data.equippedItemIds?.includes(item.id)).map(cloneItem);
+  }
   get unlockedIds(): readonly string[] { return [...(this.data.unlocks ?? [])]; }
   get forgeEmbers(): number { return this.data.forgeEmbers ?? 0; }
   get spendableForgeEmbers(): number { return this.spendableEmbers; }
@@ -248,6 +261,7 @@ export class SecuredStash {
     forgeEmbers = 0,
     passives?: { classId: CharacterClassId; depths: readonly number[] },
     defeatedWardenDepth?: number,
+    wornIds: readonly string[] = [],
   ): StashOutcome {
     if (this.state !== 'ready') return this.failure();
     if (defeatedWardenDepth !== undefined &&
@@ -255,7 +269,10 @@ export class SecuredStash {
          defeatedWardenDepth < 1 || defeatedWardenDepth > 497)) {
       return { ok: false, saved: 0, reason: 'invalid-items' };
     }
-    if (!items.every(validItem) || new Set(items.map(item => item.id)).size !== items.length) {
+    if (!items.every(validItem) || new Set(items.map(item => item.id)).size !== items.length ||
+        wornIds.length > 3 || new Set(wornIds).size !== wornIds.length ||
+        wornIds.some(id => !items.some(item => item.id === id)) ||
+        new Set(items.filter(item => wornIds.includes(item.id)).map(item => item.slot)).size !== wornIds.length) {
       return { ok: false, saved: 0, reason: 'invalid-items' };
     }
     if (!unlocks.every(isValidUnlockId) || new Set(unlocks).size !== unlocks.length) {
@@ -304,6 +321,11 @@ export class SecuredStash {
       highestUnlockedDepth: Math.max(this.highestUnlockedDepth,
         defeatedWardenDepth === undefined ? 1 : Math.min(497, defeatedWardenDepth + 1)),
       items: [...this.data.items, ...secured],
+      equippedItemIds: [
+        ...(this.data.equippedItemIds ?? []),
+        ...items.map((item, i) => wornIds.includes(item.id) ? secured[i].id : null)
+          .filter((id): id is string => id !== null),
+      ],
       unlocks: [...new Set([...(this.data.unlocks ?? []), ...unlocks])],
       forgeEmbers: this.forgeEmbers + forgeEmbers,
       ...(this.data.preferredClass ? { preferredClass: this.data.preferredClass } : {}),
@@ -379,7 +401,8 @@ export class SecuredStash {
     if (index < 0) return null;
     const withdrawn = cloneItem(this.data.items[index]);
     const next = { ...this.data, revision: this.data.revision + 1,
-      items: this.data.items.filter(item => item.id !== id) };
+      items: this.data.items.filter(item => item.id !== id),
+      equippedItemIds: (this.data.equippedItemIds ?? []).filter(worn => worn !== id) };
     if (!this.commit(next)) return null;
     return withdrawn;
   }
