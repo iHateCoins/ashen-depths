@@ -95,7 +95,7 @@ export class ExplorationView {
     const anchorY = cam.height * (1 - 1 / cam.zoom) / 2;
     this.map.setPosition(anchorX, anchorY);
     this.mapHitArea.setSize(mapWidth + 10, mapHeight + 10)
-      .setPosition(anchorX + left + mapWidth / 2, anchorY + top + mapHeight / 2);
+      .setPosition(anchorX + (left + mapWidth / 2) / cam.zoom, anchorY + (top + mapHeight / 2) / cam.zoom);
     this.heading.setFontSize(portrait ? 9 : 12);
     this.map.clear()
       .fillStyle(0x080e11, 0.92).fillRoundedRect(left - 5, top - 5, mapWidth + 10, mapHeight + 10, 5)
@@ -133,7 +133,7 @@ export class ExplorationView {
     this.map.fillStyle(0xffffff).fillCircle(x, y, 2.5);
     this.heading
       .setText(`EXPLORED ${this.exploration.roomsDiscovered}/${this.exploration.totalRooms} ROOMS`)
-      .setPosition(anchorX + left - 1, anchorY + top - 25);
+      .setPosition(anchorX + (left - 1) / cam.zoom, anchorY + (top - 25) / cam.zoom);
   }
 
   destroy(): void {
