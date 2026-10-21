@@ -58,9 +58,11 @@ test('guarded cache rewards damage, optional shrine heals, and restart resets bo
   });
 
   const panel = page.locator('#ashen-optional-objective');
-  await expect(panel).toBeVisible({ timeout: 10_000 });
-  await expect(panel).toContainText('Defeat');
-  await expect(panel.getByRole('button', { name: 'GUARDED' })).toBeDisabled();
+  const hint = page.locator('#ashen-objective-hint');
+  await expect(hint).toBeVisible({ timeout: 10_000 });
+  await expect(hint).toContainText('guardian');
+  await expect(panel).toBeHidden();
+  expect(await hint.evaluate(element => getComputedStyle(element).pointerEvents)).toBe('none');
 
   await page.evaluate(() => {
     const runtime = window as Window & { __ashenE2eGame?: {
