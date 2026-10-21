@@ -22,6 +22,8 @@ interface StashSnapshot {
   schema: 1;
   revision: number;
   completed: number;
+  /** Explicit character creation; older save snapshots count as an existing character. */
+  characterCreated?: boolean;
   /** Highest tower floor unlocked by an extracted Warden victory. */
   highestUnlockedDepth?: number;
   /** Skill-owned permanent support capacity, independently crafted per skill. */
@@ -120,6 +122,7 @@ function parseSnapshot(raw: string): StashSnapshot | null {
     const data = value as Partial<StashSnapshot>;
     if (data.schema !== 1 || !Number.isSafeInteger(data.revision) || data.revision! < 0 ||
         !Number.isSafeInteger(data.completed) || data.completed! < 0 ||
+        (data.characterCreated !== undefined && typeof data.characterCreated !== 'boolean') ||
         (data.skillSockets !== undefined && !validSockets(data.skillSockets)) ||
         (data.skillLoadout !== undefined && !validSkillLoadout(data.skillLoadout, data.skillSockets)) ||
         (data.highestUnlockedDepth !== undefined &&
@@ -204,6 +207,18 @@ export class SecuredStash {
   get status(): StashStatus { return this.state; }
   get count(): number { return this.data.items.length; }
   get completedExpeditions(): number { return this.data.completed; }
+  get hasCharacter(): boolean { return this.data.characterCreated === true || (this.lastStored !== null && this.data.characterCreated !== false); }
+  /** Creation is once per save. Legacy saves are never treated as blank. */
+  createCharacter(id: CharacterClassId): boolean {
+    if (this.state !== 'ready' || this.hasCharacter || !isCharacterClassId(id)) return false;
+    return this.commit({...this.data, revision:this.data.revision+1, characterCreated:true, preferredClass:id});
+  }
+  /** Destructive reset requires explicit UI confirmation. Existing corrupt saves are preserved. */
+  deleteCharacter(): boolean {
+    if (this.state !== 'ready') return false;
+    const empty = freshSnapshot();
+    return this.commit({...empty, revision:this.data.revision+1, characterCreated:false});
+  }
   /** Legacy saves default to the first floor without resetting any stored rewards. */
   get highestUnlockedDepth(): number { return this.data.highestUnlockedDepth ?? 1; }
   socketsFor(skillId: string): number { return this.data.skillSockets?.[skillId] ?? 0; }
@@ -286,7 +301,7 @@ export class SecuredStash {
    * A one-write compare-and-set preserves the complete schema-1 stash.
    */
   selectCharacterClass(id: CharacterClassId): boolean {
-    if (this.state !== 'ready' || !isCharacterClassId(id)) return false;
+    if (this.state !== 'ready' || this.hasCharacter || !isCharacterClassId(id)) return false;
     if (this.data.preferredClass === id) return true;
     return this.commit({ ...this.data, revision: this.data.revision + 1,
       preferredClass: id });
@@ -354,6 +369,7 @@ export class SecuredStash {
       schema: 1,
       revision,
       completed: this.data.completed + 1,
+      characterCreated: this.hasCharacter,
       ...(this.data.skillSockets ? { skillSockets: { ...this.data.skillSockets } } : {}),
       ...(this.data.skillLoadout ? { skillLoadout: this.skillLoadout! } : {}),
       highestUnlockedDepth: Math.max(this.highestUnlockedDepth,
