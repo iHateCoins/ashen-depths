@@ -127,10 +127,12 @@ export class DungeonScene extends Phaser.Scene {
   private depth = 1;
   private expeditionSeed = 0;
   private incoming: DescentTransfer | CheckpointTransfer | null = null;
+  private returnToHideout = false;
 
   constructor() { super('DungeonScene'); }
 
-  init(data?: DescentTransfer | CheckpointTransfer): void {
+  init(data?: DescentTransfer | CheckpointTransfer | {kind:'hideout'}): void {
+    this.returnToHideout = data?.kind === 'hideout';
     // ScenePlugin.restart() without new data can replay the previous payload.
     // A descent handoff may initialize ONE floor only; it is not a saved run.
     this.incoming = data && (data.kind === 'descend' || data.kind === 'checkpoint') && !data.consumed ? data : null;
@@ -302,8 +304,8 @@ export class DungeonScene extends Phaser.Scene {
     // Always pass a fresh-start marker for player-facing restarts. The consumed
     // descent guard also covers a bare restart() from external scene callers.
     this.defeatOverlay = new ResultOverlay('defeat', () => this.scene.restart({ kind: 'fresh' }));
-    this.victoryOverlay = new ResultOverlay('victory', () => this.scene.restart({ kind: 'fresh' }));
-    this.extractionOverlay = new ResultOverlay('extraction', () => this.scene.restart({ kind: 'fresh' }));
+    this.victoryOverlay = new ResultOverlay('victory', () => this.scene.restart({ kind: 'hideout' }));
+    this.extractionOverlay = new ResultOverlay('extraction', () => this.scene.restart({ kind: 'hideout' }));
     // The localhost Playwright harness retains legacy direct-dungeon tests.
     // Real players always enter preparation first. ?intro=1 opts local tests
     // into the complete pre-expedition flow.
@@ -351,6 +353,7 @@ export class DungeonScene extends Phaser.Scene {
       () => this.stashUi.openStash(),
       () => this.classUi.openFromHideout(),
     );
+    if (this.returnToHideout && prepare) this.preparationUi.enterHideout();
     document.documentElement.dataset.ashenHideoutRules = (!localHarness || new URLSearchParams(window.location.search).get('intro') === '1') ? 'true' : 'false';
     document.documentElement.dataset.ashenPreparation = prepare ? 'title' : 'entered';
     const preparationUi = this.preparationUi;
