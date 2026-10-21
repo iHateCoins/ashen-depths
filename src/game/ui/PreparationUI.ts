@@ -1,6 +1,7 @@
 import { CHARACTER_CLASSES, type CharacterClassId } from '../character/CharacterClasses';
 import { ACTIVE_SKILLS, SKILL_SLOT_LIMIT, SKILL_SUPPORTS, type AutoSkillSystem } from '../combat/AutoSkillSystem';
 import type { SkillProgression } from '../combat/SkillProgression';
+import type { SecuredStash } from '../loot/SecuredStash';
 
 export type PreparationStep = 'title' | 'class' | 'skills';
 
@@ -18,16 +19,20 @@ export class PreparationUI {
   private readonly error: HTMLElement;
   private step: PreparationStep = 'title';
   private open: boolean;
+  private selectedDepth: number;
 
   constructor(
     private readonly getClass: () => CharacterClassId,
     private readonly chooseClass: (id: CharacterClassId) => boolean,
     private readonly skills: AutoSkillSystem,
     private readonly progression: SkillProgression,
-    private readonly onEnter: () => void,
+    private readonly onEnter: (depth: number) => void,
     show: boolean,
+    private readonly highestUnlockedDepth = 1,
+    private readonly stash?: SecuredStash,
   ) {
     this.open = show;
+    this.selectedDepth = Math.max(1, Math.min(497, highestUnlockedDepth));
     const root = document.createElement('section');
     root.id = 'ashen-preparation-overlay';
     root.className = 'ashen-preparation-overlay';
@@ -42,7 +47,7 @@ export class PreparationUI {
     panel.className = 'ashen-preparation-panel';
     const eyebrow = document.createElement('div');
     eyebrow.className = 'ashen-preparation-eyebrow';
-    eyebrow.textContent = 'THE SANCTUARY · EXPEDITION PREPARATION';
+    eyebrow.textContent = 'THE HIDEOUT · EXPEDITION PREPARATION';
     const heading = document.createElement('h1');
     heading.id = 'ashen-preparation-heading';
     const detail = document.createElement('p');
@@ -101,7 +106,7 @@ export class PreparationUI {
     if (this.step === 'title') {
       this.root.dataset.step = 'title';
       this.heading.textContent = 'ASHEN DEPTHS';
-      this.detail.textContent = 'Build a character. Descend into dangerous dungeons. Extract with the loot and power you have earned. A sanctuary will eventually become your hideout between expeditions.';
+      this.detail.textContent = 'Build a character. Descend into dangerous dungeons. Extract with the loot and power you have earned. Your hideout is your safe place between tower expeditions.';
       const summary = document.createElement('div');
       summary.className = 'ashen-preparation-summary';
       summary.textContent = `Current adventurer: ${CHARACTER_CLASSES[this.getClass()].name} · Your secured stash, skill discoveries and passive points are retained.`;
@@ -151,15 +156,33 @@ export class PreparationUI {
     summary.className = 'ashen-preparation-summary';
     summary.textContent = `${this.skills.equipped.length} / ${SKILL_SLOT_LIMIT} active skills selected`;
     this.contents.append(summary);
+    const checkpoint = document.createElement('div');
+    checkpoint.className = 'ashen-preparation-summary';
+    const depthLabel = document.createElement('label');
+    depthLabel.textContent = 'Tower entry floor: ';
+    const depthSelect = document.createElement('select');
+    depthSelect.setAttribute('aria-label', 'Tower entry floor');
+    for (let depth = 1; depth <= this.highestUnlockedDepth; depth++) {
+      const option = document.createElement('option');
+      option.value = String(depth);
+      option.textContent = depth === this.highestUnlockedDepth ? `Depth ${depth} · Highest unlocked` : `Depth ${depth}`;
+      depthSelect.append(option);
+    }
+    depthSelect.value = String(this.selectedDepth);
+    depthSelect.addEventListener('change', () => { this.selectedDepth = Number(depthSelect.value); });
+    depthLabel.append(depthSelect);
+    checkpoint.append(depthLabel);
+    this.contents.append(checkpoint);
     const list = document.createElement('div');
     list.className = 'ashen-preparation-skills';
     for (const skill of ACTIVE_SKILLS) {
+      const socketCount = this.stash?.socketsFor(skill.id) ?? 0;
       const equipped = this.skills.equipped.some(entry => entry.id === skill.id);
       const learned = this.progression.canUseSkill(skill.id);
       const card = document.createElement('article');
       card.className = 'ashen-preparation-skill';
       const info = document.createElement('span');
-      info.textContent = `${skill.name} · ${skill.type.toUpperCase()} · ${skill.damage} damage · ${skill.cooldownSeconds}s cooldown`;
+      info.textContent = `${skill.name} · ${skill.type.toUpperCase()} · ${skill.damage} damage · ${skill.cooldownSeconds}s cooldown · ${socketCount}/6 support sockets`;
       const action = this.button(!learned ? 'LOCKED' : equipped ? 'REMOVE' : 'EQUIP', () => {
         if (!this.progression.canUseSkill(skill.id)) return;
         const next = equipped
@@ -172,6 +195,22 @@ export class PreparationUI {
       action.disabled = !learned || (!equipped && this.skills.equipped.length === SKILL_SLOT_LIMIT);
       action.setAttribute('aria-label', `${equipped ? 'Remove' : 'Equip'} ${skill.name}`);
       card.append(info, action);
+      if (learned && this.stash) {
+        const craft = this.button(`FORGE SOCKET · 1 EMBER (${this.stash.forgeEmbers} held)`, () => {
+          const result = this.stash!.craftSkillSocket(skill.id);
+          if (result === 'storage-error' || result === 'no-embers') {
+            this.warn(result === 'no-embers' ? 'No secured Forge Embers available.' : 'Crafting could not be saved. No Ember consumed.');
+            return;
+          }
+          if (result !== 'invalid-skill') {
+            if (this.stash!.socketsFor(skill.id) === 0 && equipped) this.skills.setSupport(skill.id, null);
+            this.render();
+            this.warn(result === 'added' ? 'Socket added.' : result === 'removed' ? 'Socket removed.' : 'No socket change. Ember consumed.');
+          }
+        }, true);
+        craft.disabled = this.stash.forgeEmbers < 1;
+        card.append(craft);
+      }
       if (equipped) {
         const select = document.createElement('select');
         select.setAttribute('aria-label', `Support for ${skill.name}`);
@@ -183,12 +222,13 @@ export class PreparationUI {
           const option = document.createElement('option');
           option.value = support.id;
           option.textContent = `${support.name} · ${support.description}`;
-          option.disabled = !this.progression.canUseSupport(support.id) ||
+          option.disabled = socketCount === 0 || !this.progression.canUseSupport(support.id) ||
             this.skills.equipped.some(other => other.id !== skill.id &&
               this.skills.supportFor(other.id)?.id === support.id);
           select.append(option);
         }
-        select.value = this.skills.supportFor(skill.id)?.id ?? '';
+        select.value = socketCount > 0 ? (this.skills.supportFor(skill.id)?.id ?? '') : '';
+        select.disabled = socketCount === 0;
         select.addEventListener('change', () => {
           if (!select.value || this.progression.canUseSupport(select.value)) {
             this.skills.setSupport(skill.id, select.value || null);
@@ -209,7 +249,7 @@ export class PreparationUI {
         }
         this.open = false;
         this.root.hidden = true;
-        this.onEnter();
+        this.onEnter(this.selectedDepth);
       }),
     );
   }
