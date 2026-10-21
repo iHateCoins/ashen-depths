@@ -316,7 +316,7 @@ export class DungeonScene extends Phaser.Scene {
       this.skills,
       this.progression,
       depth => {
-        if (depth > this.securedStash.highestUnlockedDepth) return false;
+        if (!this.securedStash.hasCharacter || depth > this.securedStash.highestUnlockedDepth) return false;
         this.stashUi.closeStash();
         this.classUi.hide();
         // The saved loadout becomes at-risk BEFORE entering the tower.
@@ -746,18 +746,15 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   private changeClass(id: CharacterClassId): boolean {
-    if (!this.canChangeClass()) return false;
-    if (id === this.selectedClass) return true;
-    if (!this.progression.setCharacterClass(id)) return false;
-    if (!this.securedStash.selectCharacterClass(id)) {
-      // No lasting selection on failed storage writes or stale tabs.
-      this.progression.setCharacterClass(this.selectedClass);
+    if (!this.canChangeClass() || this.securedStash.hasCharacter) return false;
+    const previous = this.selectedClass;
+    if (id !== previous && !this.progression.setCharacterClass(id)) return false;
+    if (!this.securedStash.createCharacter(id)) {
+      if (id !== previous) this.progression.setCharacterClass(previous);
       return false;
     }
     this.selectedClass = id;
-    if (!this.passives.selectClass(id, this.securedStash.passiveDepthsFor(id))) {
-      throw new Error('Cannot load class passive milestones');
-    }
+    this.passives.selectClass(id, this.securedStash.passiveDepthsFor(id));
     this.passiveTree.selectClass(id, this.securedStash.allocationsFor(id),
       this.securedStash.passivePointsFor(id));
     const cls = CHARACTER_CLASSES[id];
