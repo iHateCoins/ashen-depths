@@ -711,7 +711,8 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   private reforgeStashItem(id: string, affixIndex: number): boolean {
-    if (this.health.defeated || this.finalized || !this.campAvailable) return false;
+    if (this.health.defeated || this.finalized || !this.campAvailable ||
+        (document.documentElement.dataset.ashenHideoutRules === 'true' && !this.preparationUi?.isOpen)) return false;
     const saved = this.securedStash.reforgeItem(id, affixIndex);
     if (saved) this.updateObjectiveStatus();
     return saved;
@@ -763,6 +764,7 @@ export class DungeonScene extends Phaser.Scene {
 
   private canAllocatePassive(): boolean {
     return this.depth === 1 && this.campAvailable && !this.finalized &&
+      (document.documentElement.dataset.ashenHideoutRules !== 'true' || this.preparationUi?.isOpen) &&
       !this.health.defeated && !this.lootUi.isOpen && !this.stashUi.isOpen &&
       !this.skillUi.isOpen && !this.rewardUi.isOpen;
   }
