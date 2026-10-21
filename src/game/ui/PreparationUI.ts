@@ -26,7 +26,7 @@ export class PreparationUI {
     private readonly chooseClass: (id: CharacterClassId) => boolean,
     private readonly skills: AutoSkillSystem,
     private readonly progression: SkillProgression,
-    private readonly onEnter: (depth: number) => void,
+    private readonly onEnter: (depth: number) => boolean,
     show: boolean,
     private readonly highestUnlockedDepth = 1,
     private readonly stash?: SecuredStash,
@@ -247,9 +247,12 @@ export class PreparationUI {
           this.warn('Equip at least one active skill before entering the dungeon.');
           return;
         }
+        if (!this.onEnter(this.selectedDepth)) {
+          this.warn('Expedition could not begin. Equipment remains safe in the hideout. Check storage and retry.');
+          return;
+        }
         this.open = false;
         this.root.hidden = true;
-        this.onEnter(this.selectedDepth);
       }),
     );
   }
