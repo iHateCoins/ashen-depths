@@ -219,7 +219,7 @@ export class PreparationUI {
             return;
           }
           if (result !== 'invalid-skill') {
-            if (this.stash!.socketsFor(skill.id) === 0 && equipped) this.skills.setSupport(skill.id, null);
+            this.skills.setSupportCapacity(skill.id, this.stash!.socketsFor(skill.id));
             this.render();
             this.warn(result === 'added' ? 'Socket added.' : result === 'removed' ? 'Socket removed.' : 'No socket change. Ember consumed.');
           }
@@ -228,30 +228,29 @@ export class PreparationUI {
         card.append(craft);
       }
       if (equipped) {
-        const select = document.createElement('select');
-        select.setAttribute('aria-label', `Support for ${skill.name}`);
-        const none = document.createElement('option');
-        none.value = '';
-        none.textContent = 'No support';
-        select.append(none);
+        this.skills.setSupportCapacity(skill.id, socketCount);
+        const assigned = this.skills.supportsFor(skill.id).map(support => support.id);
+        const legend = document.createElement('p');
+        legend.textContent = `Support modifiers: ${assigned.length} / ${socketCount} sockets filled`;
+        card.append(legend);
         for (const support of SKILL_SUPPORTS) {
-          const option = document.createElement('option');
-          option.value = support.id;
-          option.textContent = `${support.name} · ${support.description}`;
-          option.disabled = socketCount === 0 || !this.progression.canUseSupport(support.id) ||
-            this.skills.equipped.some(other => other.id !== skill.id &&
-              this.skills.supportFor(other.id)?.id === support.id);
-          select.append(option);
+          const active = assigned.includes(support.id);
+          const assignedElsewhere = this.skills.equipped.some(other => other.id !== skill.id &&
+            this.skills.supportsFor(other.id).some(used => used.id === support.id));
+          const button = this.button(
+            `${active ? '✓ REMOVE' : 'ADD'} · ${support.name} · ${support.description}`, () => {
+              const next = active ? assigned.filter(id => id !== support.id) : [...assigned, support.id];
+              try {
+                this.skills.setSupports(skill.id, next);
+                this.render();
+              } catch {
+                this.warn('Support could not be assigned. Check the available sockets.');
+              }
+            }, true);
+          button.disabled = !this.progression.canUseSupport(support.id) ||
+            (!active && (assigned.length >= socketCount || assignedElsewhere));
+          card.append(button);
         }
-        select.value = socketCount > 0 ? (this.skills.supportFor(skill.id)?.id ?? '') : '';
-        select.disabled = socketCount === 0;
-        select.addEventListener('change', () => {
-          if (!select.value || this.progression.canUseSupport(select.value)) {
-            this.skills.setSupport(skill.id, select.value || null);
-            this.render();
-          }
-        });
-        card.append(select);
       }
       list.append(card);
     }
