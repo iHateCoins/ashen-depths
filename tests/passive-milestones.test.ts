@@ -60,7 +60,7 @@ describe('M07 PR03 Warden-gated passive point progression',()=>{
     expect(second.secureExpedition([],[],0,{classId:'vanguard',depths:[2]}).ok).toBe(false);
   });
 
-  it('maintains independent ledgers when changing class at camp',()=>{
+  it('keeps a permanent class while preserving independent legacy passive ledgers',()=>{
     const storage=new Storage();
     const first=new SecuredStash(storage);
     expect(first.selectCharacterClass('vanguard')).toBe(true);
@@ -68,7 +68,7 @@ describe('M07 PR03 Warden-gated passive point progression',()=>{
     const active=new SecuredStash(storage);
     const p=new PassiveMilestoneProgress('vanguard',active.passiveDepthsFor('vanguard'));
     expect(p.bankedPoints).toBe(2);
-    expect(active.selectCharacterClass('arcanist')).toBe(true);
+    expect(active.selectCharacterClass('arcanist')).toBe(false);
     expect(p.selectClass('arcanist',active.passiveDepthsFor('arcanist'))).toBe(true);
     expect(p.bankedPoints).toBe(0);
     expect(p.defeatWarden(2,true)).toBe(true);
