@@ -76,7 +76,8 @@ test('successful extraction returns to preparation, while Warden descent stays i
   await expect.poll(()=>page.evaluate(()=>document.documentElement.dataset.ashenEncounter)).toBe('complete');
   await press(page.locator('#ashen-descend-run'));
   await expect.poll(()=>page.evaluate(()=>document.documentElement.dataset.ashenDepth)).toBe('2');
-  await expect(page.locator('#ashen-preparation-overlay')).toHaveCount(0);
+  await expect(page.locator('#ashen-preparation-overlay')).toBeHidden();
+  expect(await page.evaluate(()=>document.documentElement.dataset.ashenPreparation)).toBe('entered');
   await page.evaluate(()=>{
     const s=(window as any).__ashenE2eGame.scene.getScene('DungeonScene') as any;
     s.roomEncounters.hasEnteredDepth=true;
