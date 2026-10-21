@@ -27,6 +27,27 @@ class MemoryStorage implements StashStorage {
 }
 
 describe('secured stash persistence and transactions', () => {
+  it('saves multi-support loadouts and trims saved supports on socket loss', () => {
+    const storage = new MemoryStorage();
+    const stash = new SecuredStash(storage);
+    expect(stash.saveSkillLoadout(['cinder-burst'], {'cinder-burst':['focused-power']})).toBe(false);
+    expect(stash.saveSkillLoadout(['cinder-burst'], {'cinder-burst':[]})).toBe(true);
+    expect(new SecuredStash(storage).skillLoadout?.active).toEqual(['cinder-burst']);
+    expect(stash.secureExpedition([], [], 30).ok).toBe(true);
+    for (let i = 0; i < 20 && stash.socketsFor('cinder-burst') < 2; i++)
+      stash.craftSkillSocket('cinder-burst');
+    if (stash.socketsFor('cinder-burst') >= 2) {
+      expect(stash.saveSkillLoadout(['cinder-burst'], {'cinder-burst':['focused-power','swift-casting']})).toBe(true);
+      expect(new SecuredStash(storage).skillLoadout?.supports['cinder-burst']).toHaveLength(2);
+      for (let i = 0; i < 10; i++) stash.craftSkillSocket('cinder-burst');
+      expect(stash.skillLoadout?.supports['cinder-burst'].length).toBeLessThanOrEqual(stash.socketsFor('cinder-burst'));
+    }
+    storage.failWrite = true;
+    const old = stash.skillLoadout;
+    expect(stash.saveSkillLoadout(['frost-bloom'], {'frost-bloom':[]})).toBe(false);
+    expect(stash.skillLoadout).toEqual(old);
+  });
+
   it('equips from the safe hideout without withdrawing or duplicating items', () => {
     const storage = new MemoryStorage();
     const stash = new SecuredStash(storage);
