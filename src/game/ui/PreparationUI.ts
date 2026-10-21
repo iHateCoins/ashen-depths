@@ -19,12 +19,13 @@ export class PreparationUI {
   private readonly error: HTMLElement;
   private step: PreparationStep = 'title';
   private pendingClass: CharacterClassId | null = null;
+  private pendingStartingSkill: string | null = null;
   private open: boolean;
   private selectedDepth: number;
 
   constructor(
     private readonly getClass: () => CharacterClassId,
-    private readonly chooseClass: (id: CharacterClassId) => boolean,
+    private readonly chooseClass: (id: CharacterClassId, startingSkillId?: string) => boolean,
     private readonly skills: AutoSkillSystem,
     private readonly progression: SkillProgression,
     private readonly onEnter: (depth: number) => boolean,
@@ -141,7 +142,7 @@ export class PreparationUI {
       const summary = document.createElement('div');
       summary.className = 'ashen-preparation-summary';
       summary.textContent = `Current adventurer: ${CHARACTER_CLASSES[this.getClass()].name} · Your secured stash, skill discoveries and passive points are retained.`;
-      this.contents.append(summary);
+      if (this.stash?.hasCharacter) this.contents.append(summary);
       if (this.stash?.hasCharacter) {
         this.actions.append(this.button('LOAD CHARACTER', () => this.goto('hideout')));
         this.actions.append(this.button('DELETE SAVE', () => {
@@ -153,7 +154,7 @@ export class PreparationUI {
           window.location.reload();
         }, true));
       } else {
-        this.actions.append(this.button('NEW GAME', () => { this.pendingClass = null; this.goto('class'); }));
+        this.actions.append(this.button('NEW GAME', () => { this.pendingClass = null; this.pendingStartingSkill = null; this.goto('class'); }));
       }
       return;
     }
@@ -180,6 +181,7 @@ export class PreparationUI {
           `${cls.name}\n${cls.tagline}\n${cls.health} HP · ${cls.startingSkill.name}\n${selected ? '✓ SELECTED' : 'CHOOSE CLASS'}`,
           () => {
             this.pendingClass = id;
+            this.pendingStartingSkill = null;
             this.render();
           },
           true,
@@ -203,16 +205,32 @@ export class PreparationUI {
       const selected = this.pendingClass;
       if (!selected || this.stash?.hasCharacter) { this.goto('title'); return; }
       const cls = CHARACTER_CLASSES[selected];
-      this.heading.textContent = 'Confirm Your Character';
+      const choices = selected === 'vanguard' ? ['crescent-cleave','piercing-volley'] : ['cinder-burst','frost-bloom'];
+      const selectedSkill = choices.includes(this.pendingStartingSkill ?? '') ? this.pendingStartingSkill! : choices[0];
+      this.pendingStartingSkill = selectedSkill;
+      this.heading.textContent = 'Choose Starting Skill';
       this.detail.textContent = 'This class is permanent. Your starting skill activates automatically. You can unlock and equip more skills later in the hideout.';
       const summary = document.createElement('p');
       summary.className = 'ashen-preparation-summary';
-      summary.textContent = `${cls.name} · ${cls.health} HP · Starting skill: ${cls.startingSkill.name}`;
+      summary.textContent = `${cls.name} · ${cls.health} HP · Starting skill: ${ACTIVE_SKILLS.find(skill => skill.id === selectedSkill)?.name}`;
       this.contents.append(summary);
+      const options = document.createElement('div');
+      options.className = 'ashen-preparation-classes';
+      for (const skillId of choices) {
+        const skill = ACTIVE_SKILLS.find(candidate => candidate.id === skillId)!;
+        const choice = this.button(`${skill.name} · ${skill.type} · ${skill.damage} base damage · ${skill.cooldownSeconds}s cooldown`, () => {
+          this.pendingStartingSkill = skillId;
+          this.render();
+        }, true);
+        choice.dataset.selected = String(skillId === selectedSkill);
+        choice.setAttribute('aria-label', `Choose starting skill ${skill.name}`);
+        options.append(choice);
+      }
+      this.contents.append(options);
       this.actions.append(
         this.button('BACK · CLASS', () => this.goto('class'), true),
         this.button('CREATE CHARACTER & ENTER FLOOR 1', () => {
-          if (!this.chooseClass(selected)) {
+          if (!this.chooseClass(selected, selectedSkill)) {
             this.warn('Character could not be created. Your save is unchanged.');
             return;
           }

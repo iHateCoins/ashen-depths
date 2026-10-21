@@ -209,9 +209,14 @@ export class SecuredStash {
   get completedExpeditions(): number { return this.data.completed; }
   get hasCharacter(): boolean { return this.data.characterCreated === true || (this.lastStored !== null && this.data.characterCreated !== false); }
   /** Creation is once per save. Legacy saves are never treated as blank. */
-  createCharacter(id: CharacterClassId): boolean {
+  createCharacter(id: CharacterClassId, startingSkillId?: string): boolean {
     if (this.state !== 'ready' || this.hasCharacter || !isCharacterClassId(id)) return false;
-    return this.commit({...this.data, revision:this.data.revision+1, characterCreated:true, preferredClass:id});
+    const choices = id === 'vanguard' ? ['crescent-cleave','piercing-volley'] : ['cinder-burst','frost-bloom'];
+    const selected = startingSkillId ?? choices[0];
+    if (!choices.includes(selected)) return false;
+    return this.commit({...this.data, revision:this.data.revision+1, characterCreated:true, preferredClass:id,
+      skillLoadout:{active:[selected],supports:{[selected]:[]}},
+      unlocks: selected === choices[0] ? [] : [`skill:${selected}`]});
   }
   /** Destructive reset requires explicit UI confirmation. Existing corrupt saves are preserved. */
   deleteCharacter(): boolean {
