@@ -215,7 +215,8 @@ export class SecuredStash {
     const selected = startingSkillId ?? choices[0];
     if (!choices.includes(selected)) return false;
     return this.commit({...this.data, revision:this.data.revision+1, characterCreated:true, preferredClass:id,
-      skillLoadout:{active:[selected],supports:{[selected]:[]}}});
+      skillLoadout:{active:[selected],supports:{[selected]:[]}},
+      unlocks: selected === choices[0] ? [] : [`skill:${selected}`]});
   }
   /** Destructive reset requires explicit UI confirmation. Existing corrupt saves are preserved. */
   deleteCharacter(): boolean {
