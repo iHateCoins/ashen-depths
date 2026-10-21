@@ -20,6 +20,25 @@ async function openExpedition(page:Page,klass:'vanguard'|'arcanist'='vanguard'):
   await expect.poll(()=>page.evaluate(()=>document.documentElement.dataset.ashenPreparation)).toBe('entered');
 }
 
+test('hideout stash access closes on departure and cannot reopen inside the tower',async({page})=>{
+  await page.goto(url);
+  await expect(page.locator('#boot-status')).toHaveCount(0,{timeout:20000});
+  const intro=page.locator('#ashen-preparation-overlay');
+  await expect(intro).toBeVisible();
+  await press(intro.getByRole('button',{name:'HIDEOUT STASH & ITEM FORGE'}));
+  await expect(page.locator('#ashen-stash-overlay')).toBeVisible();
+  await press(page.locator('#ashen-stash-overlay').getByRole('button',{name:'CLOSE'}));
+  await expect(page.locator('#ashen-stash-overlay')).toBeHidden();
+  await openExpedition(page);
+  await expect(page.locator('#ashen-stash-toggle')).toBeHidden();
+  await expect(page.locator('#ashen-class-toggle')).toBeHidden();
+  await page.evaluate(()=>{
+    const scene=(window as any).__ashenE2eGame.scene.getScene('DungeonScene') as any;
+    scene.stashUi.openStash();
+  });
+  await expect(page.locator('#ashen-stash-overlay')).toBeHidden();
+});
+
 test('new player prepares class and automatic skills before entering an otherwise paused dungeon',async({page})=>{
   const errors:string[]=[];
   page.on('pageerror',error=>errors.push(error.message));

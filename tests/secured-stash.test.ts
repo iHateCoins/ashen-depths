@@ -27,6 +27,83 @@ class MemoryStorage implements StashStorage {
 }
 
 describe('secured stash persistence and transactions', () => {
+  it('saves multi-support loadouts and trims saved supports on socket loss', () => {
+    const storage = new MemoryStorage();
+    const stash = new SecuredStash(storage);
+    expect(stash.saveSkillLoadout(['cinder-burst'], {'cinder-burst':['focused-power']})).toBe(false);
+    expect(stash.saveSkillLoadout(['cinder-burst'], {'cinder-burst':[]})).toBe(true);
+    expect(new SecuredStash(storage).skillLoadout?.active).toEqual(['cinder-burst']);
+    expect(stash.secureExpedition([], [], 30).ok).toBe(true);
+    for (let i = 0; i < 20 && stash.socketsFor('cinder-burst') < 2; i++)
+      stash.craftSkillSocket('cinder-burst');
+    if (stash.socketsFor('cinder-burst') >= 2) {
+      expect(stash.saveSkillLoadout(['cinder-burst'], {'cinder-burst':['focused-power','swift-casting']})).toBe(true);
+      expect(new SecuredStash(storage).skillLoadout?.supports['cinder-burst']).toHaveLength(2);
+      for (let i = 0; i < 10; i++) stash.craftSkillSocket('cinder-burst');
+      expect(stash.skillLoadout?.supports['cinder-burst'].length).toBeLessThanOrEqual(stash.socketsFor('cinder-burst'));
+    }
+    storage.failWrite = true;
+    const old = stash.skillLoadout;
+    expect(stash.saveSkillLoadout(['frost-bloom'], {'frost-bloom':[]})).toBe(false);
+    expect(stash.skillLoadout).toEqual(old);
+  });
+
+  it('equips from the safe hideout without withdrawing or duplicating items', () => {
+    const storage = new MemoryStorage();
+    const stash = new SecuredStash(storage);
+    stash.secureExpedition([item('one'), item('two'), item('armor', 'armor')]);
+    const [one, two, armor] = stash.items;
+    expect(stash.setHideoutEquipment('weapon', one.id)).toBe(true);
+    expect(stash.items).toHaveLength(3);
+    expect(stash.equippedItems.map(value => value.id)).toEqual([one.id]);
+    expect(stash.setHideoutEquipment('weapon', two.id)).toBe(true);
+    expect(stash.setHideoutEquipment('armor', armor.id)).toBe(true);
+    expect(stash.equippedItems.map(value => value.id)).toEqual([two.id, armor.id]);
+    expect(stash.setHideoutEquipment('weapon', armor.id)).toBe(false);
+    storage.failWrite = true;
+    expect(stash.setHideoutEquipment('weapon', null)).toBe(false);
+    expect(stash.equippedItems.map(value => value.id)).toContain(two.id);
+    storage.failWrite = false;
+    expect(stash.setHideoutEquipment('weapon', null)).toBe(true);
+    expect(new SecuredStash(storage).equippedItems.map(value => value.id)).toEqual([armor.id]);
+  });
+
+  it('moves retained gear out of safe ownership in one atomic departure', () => {
+    const storage = new MemoryStorage();
+    const stash = new SecuredStash(storage);
+    expect(stash.secureExpedition([item('blade'), item('spare', 'armor')], [], 0, undefined, 1, ['blade']).ok).toBe(true);
+    expect(stash.equippedItems).toHaveLength(1);
+    storage.failWrite = true;
+    expect(stash.withdrawEquippedForExpedition()).toBeNull();
+    expect(stash.equippedItems).toHaveLength(1);
+    expect(stash.items).toHaveLength(2);
+    storage.failWrite = false;
+    const risked = stash.withdrawEquippedForExpedition();
+    expect(risked?.map(gear => gear.slot)).toEqual(['weapon']);
+    expect(stash.equippedItems).toHaveLength(0);
+    expect(stash.items).toHaveLength(1);
+    expect(new SecuredStash(storage).items).toHaveLength(1);
+    expect(stash.withdrawEquippedForExpedition()).toEqual([]);
+  });
+
+  it('persists equipped ownership through extraction and reload without duplicating items', () => {
+    const storage = new MemoryStorage();
+    const stash = new SecuredStash(storage);
+    expect(stash.secureExpedition([item('weapon'), item('armor', 'armor')], [], 0, undefined, 1, ['weapon']))
+      .toMatchObject({ ok: true, saved: 2 });
+    expect(stash.equippedItems).toHaveLength(1);
+    expect(stash.equippedItems[0].slot).toBe('weapon');
+    expect(new SecuredStash(storage).equippedItems).toEqual(stash.equippedItems);
+    expect(stash.secureExpedition([item('next', 'armor')], [], 0, undefined, 2, ['next']))
+      .toMatchObject({ ok: true });
+    expect(stash.equippedItems.map(gear => gear.slot)).toEqual(['armor']);
+    expect(stash.items).toHaveLength(3);
+    const wornId = stash.equippedItems[0].id;
+    expect(stash.withdraw(wornId)?.slot).toBe('armor');
+    expect(stash.equippedItems).toHaveLength(0);
+    expect(new SecuredStash(storage).equippedItems).toHaveLength(0);
+  });
+
   it('keeps skill socket capacities separate and bounds zero through six', () => {
     const storage = new MemoryStorage();
     const stash = new SecuredStash(storage);

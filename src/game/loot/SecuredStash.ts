@@ -1,5 +1,5 @@
 import { lootHash, AFFIX_NAMES, AFFIX_POOLS, maximumAffixTier, type LootItem, type ItemAffix } from './ExpeditionLoot';
-import { ACTIVE_SKILLS } from '../combat/AutoSkillSystem';
+import { ACTIVE_SKILLS, SKILL_SUPPORTS, SKILL_SLOT_LIMIT } from '../combat/AutoSkillSystem';
 import { isValidUnlockId, UNLOCK_CHOICES } from '../combat/SkillProgression';
 import { DEFAULT_CHARACTER_CLASS, isCharacterClassId, type CharacterClassId } from '../character/CharacterClasses';
 import { clonePassiveLedger, validPassiveDepth, validPassiveLedger,
@@ -26,7 +26,11 @@ interface StashSnapshot {
   highestUnlockedDepth?: number;
   /** Skill-owned permanent support capacity, independently crafted per skill. */
   skillSockets?: Record<string, number>;
+  /** Saved hideout skills and socket-limited supports. */
+  skillLoadout?: { active: string[]; supports: Record<string, string[]> };
   items: LootItem[];
+  /** Equipped item IDs reference secured items, not duplicate copies. */
+  equippedItemIds?: string[];
   /** Absent in older schema-1 saves; treat as no learned skills. */
   unlocks?: string[];
   /** Optional since pre-M05 PR06 saves predate the forge. */
@@ -89,6 +93,26 @@ function validSockets(value: unknown): value is Record<string, number> {
       Number.isSafeInteger(count) && count >= 0 && count <= MAX_SKILL_SOCKETS);
 }
 
+function validSkillLoadout(value: unknown, sockets: Record<string, number> = {}): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as {active?: unknown; supports?: unknown};
+  if (!Array.isArray(data.active) || data.active.length > SKILL_SLOT_LIMIT ||
+      data.active.length === 0 || !data.active.every(id => typeof id === 'string' && skillIds.has(id)) ||
+      new Set(data.active).size !== data.active.length || !data.supports ||
+      typeof data.supports !== 'object' || Array.isArray(data.supports)) return false;
+  const available = new Set(SKILL_SUPPORTS.map(s => s.id));
+  const seen = new Set<string>();
+  for (const [skill, supports] of Object.entries(data.supports)) {
+    if (!data.active.includes(skill) || !Array.isArray(supports) ||
+        supports.length > (sockets[skill] ?? 0)) return false;
+    for (const support of supports) {
+      if (typeof support !== 'string' || !available.has(support) || seen.has(support)) return false;
+      seen.add(support);
+    }
+  }
+  return true;
+}
+
 function parseSnapshot(raw: string): StashSnapshot | null {
   try {
     const value: unknown = JSON.parse(raw);
@@ -97,6 +121,7 @@ function parseSnapshot(raw: string): StashSnapshot | null {
     if (data.schema !== 1 || !Number.isSafeInteger(data.revision) || data.revision! < 0 ||
         !Number.isSafeInteger(data.completed) || data.completed! < 0 ||
         (data.skillSockets !== undefined && !validSockets(data.skillSockets)) ||
+        (data.skillLoadout !== undefined && !validSkillLoadout(data.skillLoadout, data.skillSockets)) ||
         (data.highestUnlockedDepth !== undefined &&
           (!Number.isSafeInteger(data.highestUnlockedDepth) ||
            data.highestUnlockedDepth < 1 || data.highestUnlockedDepth > 497)) ||
@@ -113,6 +138,13 @@ function parseSnapshot(raw: string): StashSnapshot | null {
           new Set(data.unlocks).size !== data.unlocks.length))) return null;
     const ids = data.items.map(item => item.id);
     if (new Set(ids).size !== ids.length) return null;
+    if (data.equippedItemIds !== undefined) {
+      if (!Array.isArray(data.equippedItemIds) || data.equippedItemIds.length > 3 ||
+          data.equippedItemIds.some(id => typeof id !== 'string' || !ids.includes(id)) ||
+          new Set(data.equippedItemIds).size !== data.equippedItemIds.length) return null;
+      const equipped = data.items.filter(item => data.equippedItemIds!.includes(item.id));
+      if (new Set(equipped.map(item => item.slot)).size !== equipped.length) return null;
+    }
     return data as StashSnapshot;
   } catch {
     return null;
@@ -175,6 +207,17 @@ export class SecuredStash {
   /** Legacy saves default to the first floor without resetting any stored rewards. */
   get highestUnlockedDepth(): number { return this.data.highestUnlockedDepth ?? 1; }
   socketsFor(skillId: string): number { return this.data.skillSockets?.[skillId] ?? 0; }
+  get skillLoadout(): {active: string[]; supports: Record<string, string[]>} | null {
+    if (!this.data.skillLoadout) return null;
+    return {active: [...this.data.skillLoadout.active], supports: Object.fromEntries(
+      Object.entries(this.data.skillLoadout.supports).map(([id, values]) => [id, [...values]]))};
+  }
+  saveSkillLoadout(active: readonly string[], supports: Record<string, string[]>): boolean {
+    const loadout = {active: [...active], supports: Object.fromEntries(
+      Object.entries(supports).map(([id, values]) => [id, [...values]]))};
+    if (this.state !== 'ready' || !validSkillLoadout(loadout, this.data.skillSockets)) return false;
+    return this.commit({...this.data, revision: this.data.revision + 1, skillLoadout: loadout});
+  }
   /** Spend one secured Ember for an equip-independent skill capacity attempt. */
   craftSkillSocket(skillId: string): SocketOutcome {
     if (this.state !== 'ready') return 'storage-error';
@@ -185,9 +228,12 @@ export class SecuredStash {
     const old = this.socketsFor(skillId);
     const nextCount = outcome === 0 ? Math.max(0, old - 1) :
       outcome === 2 ? Math.min(MAX_SKILL_SOCKETS, old + 1) : old;
+    const nextLoadout = this.skillLoadout;
+    if (nextLoadout?.supports[skillId]) nextLoadout.supports[skillId] = nextLoadout.supports[skillId].slice(0, nextCount);
     const next: StashSnapshot = {
       ...this.data, revision: this.data.revision + 1,
       forgeEmbers: this.forgeEmbers - 1,
+      ...(nextLoadout ? {skillLoadout: nextLoadout} : {}),
       skillSockets: { ...this.data.skillSockets, [skillId]: nextCount },
     };
     if (!this.commit(next)) return 'storage-error';
@@ -195,6 +241,10 @@ export class SecuredStash {
     return nextCount < old ? 'removed' : nextCount > old ? 'added' : 'unchanged';
   }
   get items(): readonly LootItem[] { return this.data.items.map(cloneItem); }
+  /** The character's retained loadout, stored within the same secured item inventory. */
+  get equippedItems(): readonly LootItem[] {
+    return this.data.items.filter(item => this.data.equippedItemIds?.includes(item.id)).map(cloneItem);
+  }
   get unlockedIds(): readonly string[] { return [...(this.data.unlocks ?? [])]; }
   get forgeEmbers(): number { return this.data.forgeEmbers ?? 0; }
   get spendableForgeEmbers(): number { return this.spendableEmbers; }
@@ -248,6 +298,7 @@ export class SecuredStash {
     forgeEmbers = 0,
     passives?: { classId: CharacterClassId; depths: readonly number[] },
     defeatedWardenDepth?: number,
+    wornIds: readonly string[] = [],
   ): StashOutcome {
     if (this.state !== 'ready') return this.failure();
     if (defeatedWardenDepth !== undefined &&
@@ -255,7 +306,10 @@ export class SecuredStash {
          defeatedWardenDepth < 1 || defeatedWardenDepth > 497)) {
       return { ok: false, saved: 0, reason: 'invalid-items' };
     }
-    if (!items.every(validItem) || new Set(items.map(item => item.id)).size !== items.length) {
+    if (!items.every(validItem) || new Set(items.map(item => item.id)).size !== items.length ||
+        wornIds.length > 3 || new Set(wornIds).size !== wornIds.length ||
+        wornIds.some(id => !items.some(item => item.id === id)) ||
+        new Set(items.filter(item => wornIds.includes(item.id)).map(item => item.slot)).size !== wornIds.length) {
       return { ok: false, saved: 0, reason: 'invalid-items' };
     }
     if (!unlocks.every(isValidUnlockId) || new Set(unlocks).size !== unlocks.length) {
@@ -301,9 +355,12 @@ export class SecuredStash {
       revision,
       completed: this.data.completed + 1,
       ...(this.data.skillSockets ? { skillSockets: { ...this.data.skillSockets } } : {}),
+      ...(this.data.skillLoadout ? { skillLoadout: this.skillLoadout! } : {}),
       highestUnlockedDepth: Math.max(this.highestUnlockedDepth,
         defeatedWardenDepth === undefined ? 1 : Math.min(497, defeatedWardenDepth + 1)),
       items: [...this.data.items, ...secured],
+      equippedItemIds: wornIds.length ? items.map((item, i) => wornIds.includes(item.id) ? secured[i].id : null)
+        .filter((id): id is string => id !== null) : [...(this.data.equippedItemIds ?? [])],
       unlocks: [...new Set([...(this.data.unlocks ?? []), ...unlocks])],
       forgeEmbers: this.forgeEmbers + forgeEmbers,
       ...(this.data.preferredClass ? { preferredClass: this.data.preferredClass } : {}),
@@ -372,6 +429,42 @@ export class SecuredStash {
     return true;
   }
 
+  /** Equip or unequip directly in the safe hideout without risking ownership. */
+  setHideoutEquipment(slot: LootItem['slot'], itemId: string | null): boolean {
+    if (this.state !== 'ready' || !(['weapon','armor','charm'] as string[]).includes(slot)) return false;
+    const item = itemId === null ? null : this.data.items.find(owned => owned.id === itemId);
+    if (itemId !== null && (!item || item.slot !== slot)) return false;
+    const current = this.data.equippedItemIds ?? [];
+    const kept = current.filter(id => this.data.items.find(owned => owned.id === id)?.slot !== slot);
+    const nextIds = item ? [...kept, item.id] : kept;
+    if (current.length === nextIds.length && current.every(id => nextIds.includes(id))) return true;
+    return this.commit({
+      ...this.data,
+      revision: this.data.revision + 1,
+      equippedItemIds: nextIds,
+    });
+  }
+
+  /**
+   * Commit the transfer of every equipped item from safe storage into an
+   * at-risk expedition, in one write. Never returns equipment on failure.
+   * Death must not put these items back; extraction is the only secure path.
+   */
+  withdrawEquippedForExpedition(): LootItem[] | null {
+    if (this.state !== 'ready') return null;
+    const equipped = this.equippedItems;
+    if (equipped.length === 0) return [];
+    const ids = new Set(equipped.map(item => item.id));
+    const next: StashSnapshot = {
+      ...this.data,
+      revision: this.data.revision + 1,
+      items: this.data.items.filter(item => !ids.has(item.id)),
+      equippedItemIds: [],
+    };
+    if (!this.commit(next)) return null;
+    return equipped.map(cloneItem);
+  }
+
   /** Remove a secured item BEFORE placing it in the risky expedition bag. */
   withdraw(id: string): LootItem | null {
     if (this.state !== 'ready') return null;
@@ -379,7 +472,8 @@ export class SecuredStash {
     if (index < 0) return null;
     const withdrawn = cloneItem(this.data.items[index]);
     const next = { ...this.data, revision: this.data.revision + 1,
-      items: this.data.items.filter(item => item.id !== id) };
+      items: this.data.items.filter(item => item.id !== id),
+      equippedItemIds: (this.data.equippedItemIds ?? []).filter(worn => worn !== id) };
     if (!this.commit(next)) return null;
     return withdrawn;
   }

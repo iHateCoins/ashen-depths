@@ -37,6 +37,7 @@ export class StashUI {
     private readonly loot: ExpeditionLoot,
     onWithdraw: (id: string) => boolean,
     onReforge: (id: string, affixIndex: number) => boolean,
+    private readonly canOpen: () => boolean = () => true,
   ) {
     this.onWithdraw = onWithdraw;
     this.onReforge = onReforge;
@@ -79,6 +80,7 @@ export class StashUI {
   get isOpen(): boolean { return this.open; }
 
   openStash(): void {
+    if (!this.canOpen()) return;
     this.open = true;
     this.overlay.hidden = false;
     this.render();
@@ -121,7 +123,9 @@ export class StashUI {
       return;
     }
 
-    this.instructions.textContent = this.canWithdraw
+    this.instructions.textContent = this.hideoutMode
+      ? 'In the hideout, EQUIP and UNEQUIP gear safely. Worn gear becomes at risk only upon tower entry. Item forging is available here.'
+      : this.canWithdraw
       ? 'At entrance camp, WITHDRAW risks equipment in this expedition. FORGE is ONCE PER ITEM, permanently. 25% ERASE affix, 20% CURSE it (negative stat), 55% random reroll. Confirm the risk before committing 1 Ember; results save instantly. Embers earned during a run are usable next expedition.'
       : 'View only after leaving camp. On your next expedition you can withdraw gear or spend secured Forge Embers on stored gear. Loot can only be secured through extraction.';
     this.count.textContent = `${this.stash.count} secured items · ${this.stash.forgeEmbers} Forge Ember${this.stash.forgeEmbers === 1 ? '' : 's'} (${this.stash.spendableForgeEmbers} usable this run) · ${this.stash.completedExpeditions} successful expedition${this.stash.completedExpeditions === 1 ? '' : 's'}${this.forgeNotice ? ' · ' + this.forgeNotice : ''}`;
@@ -133,6 +137,14 @@ export class StashUI {
       return;
     }
     for (const item of items) this.items.append(this.renderItem(item));
+  }
+
+  private hideoutMode = false;
+  setHideoutMode(enabled: boolean): void {
+    this.hideoutMode = enabled;
+    if (!enabled) this.closeStash();
+    this.lastSignature = '';
+    this.refresh(enabled, this.loot.bagFull);
   }
 
   private renderItem(item: LootItem): HTMLElement {
@@ -202,7 +214,22 @@ export class StashUI {
       this.refresh(this.canWithdraw, this.loot.bagFull);
       this.render();
     });
-    card.append(details, withdraw);
+    if (this.hideoutMode) {
+      const equipped = this.stash.equippedItems.some(owned => owned.id === item.id);
+      const equip = element('button', 'ashen-stash-withdraw', equipped ? 'UNEQUIP' : 'EQUIP');
+      equip.type = 'button';
+      equip.setAttribute('aria-label', `${equipped ? 'Unequip' : 'Equip'} ${item.name} in hideout`);
+      equip.addEventListener('click', () => {
+        const ok = this.stash.setHideoutEquipment(item.slot, equipped ? null : item.id);
+        this.forgeNotice = ok ? 'Hideout equipment updated and saved.' : 'Save failed; equipped gear unchanged.';
+        this.lastSignature = '';
+        this.refresh(this.canWithdraw, this.loot.bagFull);
+        this.render();
+      });
+      card.append(details, equip);
+    } else {
+      card.append(details, withdraw);
+    }
     return card;
   }
 

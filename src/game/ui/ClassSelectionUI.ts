@@ -188,6 +188,8 @@ export class ClassSelectionUI {
     this.warning.hidden = false;
   }
 
+  openFromHideout(): void { this.show(); }
+
   private show(): void {
     if (this.open) return;
     this.open = true;

@@ -43,6 +43,7 @@ interface CheckpointTransfer {
   kind: 'checkpoint';
   consumed?: boolean;
   depth: number;
+  equipped: LootItem[];
   skills: AutoSkillSystem;
   classId: CharacterClassId;
 }
@@ -149,8 +150,8 @@ export class DungeonScene extends Phaser.Scene {
     this.optionalObjectives = new OptionalObjectiveDirector(this.dungeon, this.roomEncounters);
     this.loot = new ExpeditionLoot(this.dungeon.seed, undefined, this.depth);
     this.loadout = new EquipmentLoadout(this.loot);
-    if (carry?.kind === 'descend') {
-      this.loot.bag.push(...carry.bag, ...carry.equipped);
+    if (carry) {
+      this.loot.bag.push(...(carry.kind === 'descend' ? carry.bag : []), ...carry.equipped);
       for (const item of carry.equipped) {
         if (this.loadout.equip(item.id) !== 'equipped') {
           throw new Error('Cannot restore worn equipment during descent');
@@ -273,6 +274,8 @@ export class DungeonScene extends Phaser.Scene {
     this.stashUi = new StashUI(
       this.securedStash, this.loot, id => this.withdrawFromStash(id),
       (id, affixIndex) => this.reforgeStashItem(id, affixIndex),
+      () => document.documentElement.dataset.ashenHideoutRules !== 'true' ||
+        !!this.preparationUi?.isOpen,
     );
     this.skillUi = new SkillLoadoutUI(this.skills,
       () => !this.health.defeated && !this.finalized && !this.lootUi.isOpen && !this.stashUi.isOpen,
@@ -313,21 +316,42 @@ export class DungeonScene extends Phaser.Scene {
       this.skills,
       this.progression,
       depth => {
+        if (depth > this.securedStash.highestUnlockedDepth) return false;
+        this.stashUi.closeStash();
+        this.classUi.hide();
+        // The saved loadout becomes at-risk BEFORE entering the tower.
+        // A failed compare-and-set leaves every item in the hideout.
+        const equipped = this.securedStash.withdrawEquippedForExpedition();
+        if (equipped === null) return false;
         if (depth > 1) {
-          // Fresh expedition at a previously secured checkpoint, without
-          // carrying risky loot or Warden rewards from the prior run.
-          if (depth > this.securedStash.highestUnlockedDepth) return;
+          // New floor without any unextracted loot from a previous expedition.
           this.scene.restart({kind: 'checkpoint', depth, classId: this.selectedClass,
-            skills: this.skills} satisfies CheckpointTransfer);
-          return;
+            skills: this.skills, equipped} satisfies CheckpointTransfer);
+          return true;
         }
+        this.loot.bag.push(...equipped);
+        for (const item of equipped) {
+          if (this.loadout.equip(item.id) !== 'equipped') {
+            throw new Error('Cannot restore risked equipment on entry');
+          }
+        }
+        this.stashUi.setHideoutMode(false);
+        this.recalculateEquipment();
+        this.refreshLootPrompt();
         this.updateObjectiveStatus();
         document.documentElement.dataset.ashenPreparation = 'entered';
+        return true;
       },
       prepare,
       this.securedStash.highestUnlockedDepth,
       this.securedStash,
     );
+    this.stashUi.setHideoutMode(prepare);
+    this.preparationUi.addHideoutActions(
+      () => this.stashUi.openStash(),
+      () => this.classUi.openFromHideout(),
+    );
+    document.documentElement.dataset.ashenHideoutRules = (!localHarness || new URLSearchParams(window.location.search).get('intro') === '1') ? 'true' : 'false';
     document.documentElement.dataset.ashenPreparation = prepare ? 'title' : 'entered';
     const preparationUi = this.preparationUi;
     const defeatOverlay = this.defeatOverlay;
@@ -693,13 +717,15 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   private reforgeStashItem(id: string, affixIndex: number): boolean {
-    if (this.health.defeated || this.finalized || !this.campAvailable) return false;
+    if (this.health.defeated || this.finalized || !this.campAvailable ||
+        (document.documentElement.dataset.ashenHideoutRules === 'true' && !this.preparationUi?.isOpen)) return false;
     const saved = this.securedStash.reforgeItem(id, affixIndex);
     if (saved) this.updateObjectiveStatus();
     return saved;
   }
 
   private withdrawFromStash(id: string): boolean {
+    if (document.documentElement.dataset.ashenHideoutRules === 'true') return false;
     if (this.health.defeated || this.finalized || !this.campAvailable || this.loot.bagFull) return false;
     const item = this.securedStash.withdraw(id);
     if (!item) return false;
@@ -712,7 +738,8 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   private canChangeClass(): boolean {
-    return this.depth === 1 && this.campAvailable && !this.finalized &&
+    return (document.documentElement.dataset.ashenHideoutRules !== 'true' || !!this.preparationUi?.isOpen) &&
+      this.depth === 1 && this.campAvailable && !this.finalized &&
       !this.health.defeated && this.kills === 0 && this.loot.bag.length === 0 &&
       this.loadout.equippedCount === 0 && !this.lootUi.isOpen &&
       !this.stashUi.isOpen && !this.skillUi.isOpen && !this.rewardUi.isOpen;
@@ -745,6 +772,7 @@ export class DungeonScene extends Phaser.Scene {
 
   private canAllocatePassive(): boolean {
     return this.depth === 1 && this.campAvailable && !this.finalized &&
+      (document.documentElement.dataset.ashenHideoutRules !== 'true' || this.preparationUi?.isOpen) &&
       !this.health.defeated && !this.lootUi.isOpen && !this.stashUi.isOpen &&
       !this.skillUi.isOpen && !this.rewardUi.isOpen;
   }
@@ -800,6 +828,7 @@ export class DungeonScene extends Phaser.Scene {
       items, this.progression.pendingUnlocks, this.progression.pendingForgeEmbers,
       { classId: this.selectedClass, depths: this.passives.pendingDepths },
       this.roomEncounters.completed ? this.depth : undefined,
+      EQUIPMENT_SLOTS.map(slot => this.loadout.get(slot)?.id).filter((id): id is string => id !== undefined),
     );
     if (!result.ok) {
       const message = result.reason === 'storage-full'

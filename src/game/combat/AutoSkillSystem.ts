@@ -142,7 +142,8 @@ export interface EffectiveSkillStats {
  */
 export class AutoSkillSystem {
   private cooldowns = new Map<string, number>();
-  private supports = new Map<string, string>();
+  private supports = new Map<string, string[]>();
+  private supportCapacities = new Map<string, number>();
   /** Spell Power from equipment scales spells only. */
   bonusDamage = 0;
   /** Attack Power from equipment scales attack-tagged skills only. */
@@ -180,43 +181,46 @@ export class AutoSkillSystem {
   }
 
   supportFor(skillId: string): SkillSupportDefinition | null {
-    const id = this.supports.get(skillId);
-    return SKILL_SUPPORTS.find(support => support.id === id) ?? null;
+    return this.supportsFor(skillId)[0] ?? null;
   }
-
-  /** Validate the whole support assignment before mutating it. */
-  setSupport(skillId: string, supportId: string | null): void {
-    if (!this.equippedSkills.some(skill => skill.id === skillId)) {
-      throw new Error(`Skill is not equipped: ${skillId}`);
-    }
-    if (supportId !== null) {
-      if (!SKILL_SUPPORTS.some(support => support.id === supportId)) {
-        throw new Error(`Unknown support: ${supportId}`);
-      }
-      if ([...this.supports].some(([owner, id]) => owner !== skillId && id === supportId)) {
-        throw new Error(`Support already equipped: ${supportId}`);
-      }
-      this.supports.set(skillId, supportId);
-    } else {
-      this.supports.delete(skillId);
-    }
-    // Changing supports never clears a consumed cooldown.
+  supportsFor(skillId: string): SkillSupportDefinition[] {
+    return (this.supports.get(skillId) ?? []).map(id => SKILL_SUPPORTS.find(s => s.id === id))
+      .filter((s): s is SkillSupportDefinition => s !== undefined);
+  }
+  setSupportCapacity(skillId: string, count: number): void {
+    if (!Number.isSafeInteger(count) || count < 0 || count > 6) throw new Error('Invalid socket capacity');
+    this.supportCapacities.set(skillId, count);
+    this.supports.set(skillId, (this.supports.get(skillId) ?? []).slice(0, count));
+  }
+  setSupports(skillId: string, ids: readonly string[]): void {
+    if (!this.equippedSkills.some(skill => skill.id === skillId)) throw new Error('Skill not equipped');
+    if (ids.length > (this.supportCapacities.get(skillId) ?? 1) || new Set(ids).size !== ids.length)
+      throw new Error('Support sockets exceeded or duplicate');
+    if (ids.some(id => !SKILL_SUPPORTS.some(s => s.id === id))) throw new Error('Unknown support');
+    for (const [owner, assigned] of this.supports)
+      if (owner !== skillId && ids.some(id => assigned.includes(id))) throw new Error('Support already equipped');
+    this.supports.set(skillId, [...ids]);
+  }
+  setSupport(skillId: string, id: string | null): void {
+    this.setSupports(skillId, id === null ? [] : [id]);
   }
 
   effectiveStats(skillId: string): EffectiveSkillStats {
     const skill = this.equippedSkills.find(item => item.id === skillId);
     if (!skill) throw new Error(`Skill is not equipped: ${skillId}`);
-    const support = this.supportFor(skillId);
+    const supports = this.supportsFor(skillId);
+    const multiplier = (key: 'damageMultiplier' | 'radiusMultiplier' | 'cooldownMultiplier') =>
+      supports.reduce((value, support) => value * support[key], 1);
     return {
       skillId,
       type: skill.type,
-      supportId: support?.id ?? null,
+      supportId: supports[0]?.id ?? null,
       damage: Math.max(1, Math.round((skill.damage + (skill.type === 'attack'
-        ? this.bonusAttackDamage : this.bonusDamage)) * (support?.damageMultiplier ?? 1))),
-      radius: Math.max(1, Math.round(skill.radius * (support?.radiusMultiplier ?? 1))),
+        ? this.bonusAttackDamage : this.bonusDamage)) * multiplier('damageMultiplier'))),
+      radius: Math.max(1, Math.round(skill.radius * multiplier('radiusMultiplier'))),
       range: skill.range,
       cooldownSeconds: Math.max(0.1, Math.round(skill.cooldownSeconds *
-        (support?.cooldownMultiplier ?? 1) *
+        multiplier('cooldownMultiplier') *
         (1 - Math.max(0, Math.min(30, this.passiveCooldownReduction)) / 100) * 100) / 100),
     };
   }
