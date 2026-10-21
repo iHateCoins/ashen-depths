@@ -341,6 +341,10 @@ export class DungeonScene extends Phaser.Scene {
       this.securedStash.highestUnlockedDepth,
       this.securedStash,
     );
+    this.preparationUi.addHideoutActions(
+      () => this.stashUi.openStash(),
+      () => this.classUi.openFromHideout(),
+    );
     document.documentElement.dataset.ashenPreparation = prepare ? 'title' : 'entered';
     const preparationUi = this.preparationUi;
     const defeatOverlay = this.defeatOverlay;
