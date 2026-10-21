@@ -274,6 +274,8 @@ export class DungeonScene extends Phaser.Scene {
     this.stashUi = new StashUI(
       this.securedStash, this.loot, id => this.withdrawFromStash(id),
       (id, affixIndex) => this.reforgeStashItem(id, affixIndex),
+      () => document.documentElement.dataset.ashenHideoutRules !== 'true' ||
+        !!this.preparationUi?.isOpen,
     );
     this.skillUi = new SkillLoadoutUI(this.skills,
       () => !this.health.defeated && !this.finalized && !this.lootUi.isOpen && !this.stashUi.isOpen,
@@ -723,6 +725,7 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   private withdrawFromStash(id: string): boolean {
+    if (document.documentElement.dataset.ashenHideoutRules === 'true') return false;
     if (this.health.defeated || this.finalized || !this.campAvailable || this.loot.bagFull) return false;
     const item = this.securedStash.withdraw(id);
     if (!item) return false;
