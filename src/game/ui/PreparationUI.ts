@@ -18,16 +18,19 @@ export class PreparationUI {
   private readonly error: HTMLElement;
   private step: PreparationStep = 'title';
   private open: boolean;
+  private selectedDepth: number;
 
   constructor(
     private readonly getClass: () => CharacterClassId,
     private readonly chooseClass: (id: CharacterClassId) => boolean,
     private readonly skills: AutoSkillSystem,
     private readonly progression: SkillProgression,
-    private readonly onEnter: () => void,
+    private readonly onEnter: (depth: number) => void,
     show: boolean,
+    private readonly highestUnlockedDepth = 1,
   ) {
     this.open = show;
+    this.selectedDepth = Math.max(1, Math.min(497, highestUnlockedDepth));
     const root = document.createElement('section');
     root.id = 'ashen-preparation-overlay';
     root.className = 'ashen-preparation-overlay';
@@ -42,7 +45,7 @@ export class PreparationUI {
     panel.className = 'ashen-preparation-panel';
     const eyebrow = document.createElement('div');
     eyebrow.className = 'ashen-preparation-eyebrow';
-    eyebrow.textContent = 'THE SANCTUARY · EXPEDITION PREPARATION';
+    eyebrow.textContent = 'THE HIDEOUT · EXPEDITION PREPARATION';
     const heading = document.createElement('h1');
     heading.id = 'ashen-preparation-heading';
     const detail = document.createElement('p');
@@ -101,7 +104,7 @@ export class PreparationUI {
     if (this.step === 'title') {
       this.root.dataset.step = 'title';
       this.heading.textContent = 'ASHEN DEPTHS';
-      this.detail.textContent = 'Build a character. Descend into dangerous dungeons. Extract with the loot and power you have earned. A sanctuary will eventually become your hideout between expeditions.';
+      this.detail.textContent = 'Build a character. Descend into dangerous dungeons. Extract with the loot and power you have earned. Your hideout is your safe place between tower expeditions.';
       const summary = document.createElement('div');
       summary.className = 'ashen-preparation-summary';
       summary.textContent = `Current adventurer: ${CHARACTER_CLASSES[this.getClass()].name} · Your secured stash, skill discoveries and passive points are retained.`;
@@ -151,6 +154,23 @@ export class PreparationUI {
     summary.className = 'ashen-preparation-summary';
     summary.textContent = `${this.skills.equipped.length} / ${SKILL_SLOT_LIMIT} active skills selected`;
     this.contents.append(summary);
+    const checkpoint = document.createElement('div');
+    checkpoint.className = 'ashen-preparation-summary';
+    const depthLabel = document.createElement('label');
+    depthLabel.textContent = 'Tower entry floor: ';
+    const depthSelect = document.createElement('select');
+    depthSelect.setAttribute('aria-label', 'Tower entry floor');
+    for (let depth = 1; depth <= this.highestUnlockedDepth; depth++) {
+      const option = document.createElement('option');
+      option.value = String(depth);
+      option.textContent = depth === this.highestUnlockedDepth ? `Depth ${depth} · Highest unlocked` : `Depth ${depth}`;
+      depthSelect.append(option);
+    }
+    depthSelect.value = String(this.selectedDepth);
+    depthSelect.addEventListener('change', () => { this.selectedDepth = Number(depthSelect.value); });
+    depthLabel.append(depthSelect);
+    checkpoint.append(depthLabel);
+    this.contents.append(checkpoint);
     const list = document.createElement('div');
     list.className = 'ashen-preparation-skills';
     for (const skill of ACTIVE_SKILLS) {
@@ -209,7 +229,7 @@ export class PreparationUI {
         }
         this.open = false;
         this.root.hidden = true;
-        this.onEnter();
+        this.onEnter(this.selectedDepth);
       }),
     );
   }
