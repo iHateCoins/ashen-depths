@@ -74,19 +74,11 @@ export class OptionalObjectiveUI {
     this.hint.hidden = true;
     this.root.hidden = false;
     this.title.textContent = prompt.objective.label;
-    const description = prompt.availability === 'guarded'
-      ? `Defeat ${prompt.remainingGuards} remaining cache guardian${prompt.remainingGuards === 1 ? '' : 's'} to unlock this reward.`
-      : prompt.availability === 'healthy'
-        ? 'Already at full health. Return when wounded.'
-        : cache
-          ? 'Open for Ember Edge: +10 basic-attack damage for this expedition.'
-          : 'Restore up to 35 health. Can be used once per expedition.';
-
-    this.description.textContent = description;
-    this.button.textContent = prompt.availability === 'guarded' ? 'GUARDED'
-      : prompt.availability === 'healthy' ? 'HEALTH FULL'
-        : cache ? 'OPEN CACHE' : 'USE SHRINE';
-    this.button.disabled = prompt.availability !== 'ready';
+    this.description.textContent = cache
+      ? 'Open for Ember Edge: +10 basic-attack damage for this expedition.'
+      : 'Restore up to 35 health. Can be used once per expedition.';
+    this.button.textContent = cache ? 'OPEN CACHE' : 'USE SHRINE';
+    this.button.disabled = false;
   }
 
   hide(): void {
