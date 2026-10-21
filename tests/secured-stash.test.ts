@@ -27,6 +27,26 @@ class MemoryStorage implements StashStorage {
 }
 
 describe('secured stash persistence and transactions', () => {
+  it('equips from the safe hideout without withdrawing or duplicating items', () => {
+    const storage = new MemoryStorage();
+    const stash = new SecuredStash(storage);
+    stash.secureExpedition([item('one'), item('two'), item('armor', 'armor')]);
+    const [one, two, armor] = stash.items;
+    expect(stash.setHideoutEquipment('weapon', one.id)).toBe(true);
+    expect(stash.items).toHaveLength(3);
+    expect(stash.equippedItems.map(value => value.id)).toEqual([one.id]);
+    expect(stash.setHideoutEquipment('weapon', two.id)).toBe(true);
+    expect(stash.setHideoutEquipment('armor', armor.id)).toBe(true);
+    expect(stash.equippedItems.map(value => value.id)).toEqual([two.id, armor.id]);
+    expect(stash.setHideoutEquipment('weapon', armor.id)).toBe(false);
+    storage.failWrite = true;
+    expect(stash.setHideoutEquipment('weapon', null)).toBe(false);
+    expect(stash.equippedItems.map(value => value.id)).toContain(two.id);
+    storage.failWrite = false;
+    expect(stash.setHideoutEquipment('weapon', null)).toBe(true);
+    expect(new SecuredStash(storage).equippedItems.map(value => value.id)).toEqual([armor.id]);
+  });
+
   it('moves retained gear out of safe ownership in one atomic departure', () => {
     const storage = new MemoryStorage();
     const stash = new SecuredStash(storage);
