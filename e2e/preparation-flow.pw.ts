@@ -38,7 +38,7 @@ test('hideout stash access closes on departure and cannot reopen inside the towe
   await press(page.locator('#ashen-stash-overlay').getByRole('button',{name:'CLOSE'}));
   await expect(page.locator('#ashen-stash-overlay')).toBeHidden();
   await press(intro.getByRole('button',{name:'PREPARE EXPEDITION'}));
-  await press(intro.getByRole('button',{name:'CREATE CHARACTER & ENTER FLOOR 1'}));
+  await press(intro.getByRole('button',{name:'ENTER DUNGEON'}));
   await expect(intro).toBeHidden();
   await expect(page.locator('#ashen-stash-toggle')).toBeHidden();
   await expect(page.locator('#ashen-class-toggle')).toBeHidden();
