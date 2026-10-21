@@ -341,6 +341,7 @@ export class DungeonScene extends Phaser.Scene {
       this.securedStash.highestUnlockedDepth,
       this.securedStash,
     );
+    this.stashUi.setHideoutMode(prepare);
     this.preparationUi.addHideoutActions(
       () => this.stashUi.openStash(),
       () => this.classUi.openFromHideout(),
