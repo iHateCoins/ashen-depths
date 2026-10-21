@@ -198,7 +198,7 @@ export class AutoSkillSystem {
       throw new Error('Support sockets exceeded or duplicate');
     if (ids.some(id => !SKILL_SUPPORTS.some(s => s.id === id))) throw new Error('Unknown support');
     for (const [owner, assigned] of this.supports)
-      if (owner !== skillId && ids.some(id => assigned.includes(id))) throw new Error('Support already assigned');
+      if (owner !== skillId && ids.some(id => assigned.includes(id))) throw new Error('Support already equipped');
     this.supports.set(skillId, [...ids]);
   }
   setSupport(skillId: string, id: string | null): void {
