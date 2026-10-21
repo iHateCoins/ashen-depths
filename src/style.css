@@ -1000,3 +1000,7 @@ html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#10171
 .ashen-preparation-overlay ~ .ashen-class-overlay { z-index: 2600; }
 body:has(.ashen-preparation-overlay:not([hidden])) .ashen-stash-overlay,
 body:has(.ashen-preparation-overlay:not([hidden])) .ashen-class-overlay { z-index: 2600; }
+
+/* Public hideout flow: stash and passive actions are not dungeon HUD buttons. */
+html[data-ashen-hideout-rules="true"] .ashen-stash-toggle,
+html[data-ashen-hideout-rules="true"] .ashen-class-toggle { display:none !important; }
