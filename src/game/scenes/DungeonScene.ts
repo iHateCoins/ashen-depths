@@ -561,6 +561,23 @@ export class DungeonScene extends Phaser.Scene {
     // Orientation may change without moving the character. Reformat the
     // objective immediately rather than waiting for the next dungeon step.
     this.updateObjectiveStatus();
+    this.anchorHudToViewport();
+  }
+
+  /** Phaser scrollFactor(0) still participates in camera zoom. Draw HUD in
+   * logical screen pixels and undo the camera transform on each zoom/layout. */
+  private anchorHudToViewport(): void {
+    const camera = this.cameras.main;
+    const inverse = 1 / camera.zoom;
+    const dx = camera.width * (1 - inverse) / 2;
+    const dy = camera.height * (1 - inverse) / 2;
+    const labels = [this.titleLabel, this.healthLabel, this.objectiveLabel,
+      this.skillStatusLabel, this.status, this.debugButton, this.dungeonSeedLabel];
+    for (const label of labels) {
+      // refreshHud lays out untransformed positions first.
+      const {x, y} = label;
+      label.setScale(inverse).setPosition(dx + x * inverse, dy + y * inverse);
+    }
   }
 
   private toggleDebug(): void {
@@ -595,6 +612,8 @@ export class DungeonScene extends Phaser.Scene {
   private setZoom(value: number): void {
     this.zoom = Phaser.Math.Clamp(Math.round(value * 10) / 10, 0.7, 1.7);
     this.cameras.main.setZoom(this.zoom);
+    this.refreshHud();
+    this.explorationView.syncZoom();
   }
 
   private showDamage(position: Point, amount: number, color: string): void {

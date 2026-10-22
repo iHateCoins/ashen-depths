@@ -104,8 +104,10 @@ export const ITEM_BASES: Readonly<Record<EquipmentSlot, readonly ItemBaseDefinit
     { name: 'Rustbound Sword', minLevel: 1, offset: { attack: 2 } },
     { name: 'Iron Cleaver', minLevel: 1, offset: { attack: 3 } },
     { name: 'Ashwood Staff', minLevel: 1, offset: { attack: -4, spell: 5 } },
+    { name: 'Hexwood Wand', minLevel: 1, offset: { attack: -5, spell: 3 } },
     { name: 'Spiked Mace', minLevel: 1, offset: { attack: 1, armor: 2 } },
     { name: 'Runeblade', minLevel: 8, offset: { attack: 4, spell: 4 } },
+    { name: 'Astral Scepter', minLevel: 8, offset: { attack: -5, spell: 8 } },
     { name: 'Siegebreaker', minLevel: 8, offset: { attack: 7, armor: 2 } },
   ],
   armor: [
@@ -142,7 +144,9 @@ export function rollBaseStats(
   const legacy = legacyBaseStats(slot, itemLevel);
   return {
     attack: Math.max(0, legacy.attack + (base.offset.attack ?? 0)),
-    spell: Math.max(0, legacy.spell + (base.offset.spell ?? 0)),
+    spell: Math.max(0, legacy.spell + (base.offset.spell ?? 0) +
+      (slot === 'weapon' && (base.offset.spell ?? 0) > 0 && (base.offset.attack ?? 0) < 0
+        ? itemLevel : 0)),
     armor: Math.max(0, legacy.armor + (base.offset.armor ?? 0)),
     health: Math.max(0, legacy.health + (base.offset.health ?? 0)),
   };

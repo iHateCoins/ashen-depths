@@ -22,10 +22,10 @@ describe('M06 PR02 meaningful base families', () => {
   it('every slot has starter and level-gated advanced bases with unique names', () => {
     for(const slot of ['weapon','armor','charm'] as EquipmentSlot[]) {
       const choices=ITEM_BASES[slot];
-      expect(choices).toHaveLength(6);
+      expect(choices).toHaveLength(slot === 'weapon' ? 8 : 6);
       expect(new Set(choices.map(base=>base.name)).size).toBe(choices.length);
-      expect(choices.filter(base=>base.minLevel===1)).toHaveLength(4);
-      expect(choices.filter(base=>base.minLevel===8)).toHaveLength(2);
+      expect(choices.filter(base=>base.minLevel===1)).toHaveLength(slot === 'weapon' ? 5 : 4);
+      expect(choices.filter(base=>base.minLevel===8)).toHaveLength(slot === 'weapon' ? 3 : 2);
     }
   });
 
@@ -36,7 +36,7 @@ describe('M06 PR02 meaningful base families', () => {
     const ironmail=rollBaseStats('armor',5,ITEM_BASES.armor[1]);
     const bone=rollBaseStats('charm',5,ITEM_BASES.charm[1]);
     const ember=rollBaseStats('charm',5,ITEM_BASES.charm[0]);
-    expect(staff.spell).toBe(5);
+    expect(staff.spell).toBe(10);
     expect(staff.attack).toBeLessThan(cleaver.attack);
     expect(mantle.spell).toBe(4);
     expect(mantle.armor).toBeLessThan(ironmail.armor);
@@ -44,9 +44,9 @@ describe('M06 PR02 meaningful base families', () => {
     expect(bone.spell).toBeLessThan(ember.spell);
     const staffItem:LootItem={...legacy,baseStats:staff};
     expect(itemBonuses(staffItem)).toMatchObject({
-      attack:staff.attack,spell:12,armor:0,health:0,
+      attack:staff.attack,spell:17,armor:0,health:0,
     });
-    expect(baseBonusSummary(staffItem)).toContain('+5 Spell');
+    expect(baseBonusSummary(staffItem)).toContain('+10 Spell');
   });
 
   it('seeded drops are deterministic, legal by level and include all starter and advanced families', () => {
@@ -71,10 +71,24 @@ describe('M06 PR02 meaningful base families', () => {
       expect(boss.baseStats).toEqual(rollBaseStats(boss.slot,8,def));
       if(def.minLevel===8) advanced.add(boss.baseName);
     }
-    expect(starter.size).toBe(12);
+    expect(starter.size).toBe(13);
     expect(advanced.size).toBeGreaterThanOrEqual(4);
     expect([...starter].every(base=>![...ITEM_BASES.weapon,...ITEM_BASES.armor,
       ...ITEM_BASES.charm].some(def=>def.name===base && def.minLevel>=8))).toBe(true);
+  });
+
+  it('high-level spell specialists scale comparably to attack specialists', () => {
+    const staff=ITEM_BASES.weapon.find(base=>base.name==='Ashwood Staff')!;
+    const wand=ITEM_BASES.weapon.find(base=>base.name==='Hexwood Wand')!;
+    const scepter=ITEM_BASES.weapon.find(base=>base.name==='Astral Scepter')!;
+    const sword=ITEM_BASES.weapon.find(base=>base.name==='Iron Cleaver')!;
+    for(const level of [8,25,60,120]) {
+      const weapon=rollBaseStats('weapon',level,sword);
+      for(const focus of [staff,wand,scepter]) {
+        const spell=rollBaseStats('weapon',level,focus);
+        expect(spell.spell).toBeGreaterThanOrEqual(weapon.attack-7);
+      }
+    }
   });
 
   it('legacy items preserve their exact original slot-and-level bonuses', () => {
