@@ -492,6 +492,7 @@ export class DungeonScene extends Phaser.Scene {
       11, 7, 6, 2,
       4, 8, 14, 1,
     ];
+    const debugWallFrames = new URLSearchParams(window.location.search).has('wallDebug');
     for (let y = 0; y < layout.rows; y++) {
       for (let x = 0; x < layout.columns; x++) {
         if (floor(x, y)) continue;
@@ -504,6 +505,14 @@ export class DungeonScene extends Phaser.Scene {
           'dungeon-wall-tiles', frames[mask])
           .setOrigin(0, 0)
           .setDepth(-19);
+        if (debugWallFrames) {
+          // Tiny tile id and adjacency mask for exact atlas mapping review.
+          this.add.text(x * layout.cellSize + 2, y * layout.cellSize + 2,
+            `${frames[mask]}/${mask.toString(16)}`, {
+              fontFamily: 'monospace', fontSize: '10px',
+              color: '#ffffff', backgroundColor: '#111111',
+            }).setDepth(30).setScrollFactor(1);
+        }
       }
     }
   }
