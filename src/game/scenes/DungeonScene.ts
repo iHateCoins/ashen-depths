@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import dungeonWallTilesetUrl from '../assets/tilesets/dungeon-walls-floors.png';
 import { MovementController, type Point } from '../movement/MovementController';
 import { NavigationGrid } from '../navigation/Grid';
 import { findPath } from '../navigation/Pathfinder';
@@ -130,6 +131,15 @@ export class DungeonScene extends Phaser.Scene {
   private returnToHideout = false;
 
   constructor() { super('DungeonScene'); }
+
+  preload(): void {
+    // PixelLab 15-tileset export: four 32px columns by four rows.
+    if (!this.textures.exists('dungeon-wall-tiles')) {
+      this.load.spritesheet('dungeon-wall-tiles', dungeonWallTilesetUrl, {
+        frameWidth: 32, frameHeight: 32,
+      });
+    }
+  }
 
   init(data?: DescentTransfer | CheckpointTransfer | {kind:'hideout'}): void {
     this.returnToHideout = data?.kind === 'hideout';
@@ -437,6 +447,8 @@ export class DungeonScene extends Phaser.Scene {
           graphics.lineBetween(px+layout.cellSize,py,px+layout.cellSize,py+layout.cellSize);
       }
     }
+    this.renderWallTiles(layout);
+
     for (const room of layout.rooms) {
       const px = (room.center.x + 0.5) * layout.cellSize;
       const py = (room.center.y + 0.5) * layout.cellSize;
@@ -453,6 +465,42 @@ export class DungeonScene extends Phaser.Scene {
           color:room.role === 'cache' ? '#e8d4a6' : '#ecc2d1',
           stroke:'#172022',strokeThickness:3,
         }).setOrigin(0.5).setDepth(1);
+      }
+    }
+  }
+
+  /**
+   * PR48-A1: experimental visual-only wall skin. The floor map remains the
+   * sole authority for collision, navigation, encounters and extraction.
+   *
+   * A PixelLab 15-tileset encodes connected wall/floor transitions, rather
+   * than sixteen interchangeable wall blocks. This first pass uses only
+   * perimeter cells. The mapping is intentionally isolated here so it can
+   * be adjusted after checking actual generated dungeon layouts.
+   */
+  private renderWallTiles(layout: DungeonLayout): void {
+    const floor = (x: number, y: number): boolean =>
+      dungeonFloorAt(layout, {x, y});
+    // Four cardinal floor neighbors: N=1, E=2, S=4, W=8.
+    // Frame 12 is wall interior; the other frames have stone/floor borders.
+    const frames: readonly number[] = [
+      12, 9, 13, 10,
+      3, 6, 5, 7,
+      11, 4, 6, 2,
+      15, 8, 14, 1,
+    ];
+    for (let y = 0; y < layout.rows; y++) {
+      for (let x = 0; x < layout.columns; x++) {
+        if (floor(x, y)) continue;
+        const mask = (floor(x, y - 1) ? 1 : 0)
+          | (floor(x + 1, y) ? 2 : 0)
+          | (floor(x, y + 1) ? 4 : 0)
+          | (floor(x - 1, y) ? 8 : 0);
+        if (mask === 0) continue; // solid interior stays dark
+        this.add.image(x * layout.cellSize, y * layout.cellSize,
+          'dungeon-wall-tiles', frames[mask])
+          .setOrigin(0, 0)
+          .setDepth(-19);
       }
     }
   }
