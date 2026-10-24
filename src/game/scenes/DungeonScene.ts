@@ -500,15 +500,25 @@ export class DungeonScene extends Phaser.Scene {
           | (floor(x + 1, y) ? 2 : 0)
           | (floor(x, y + 1) ? 4 : 0)
           | (floor(x - 1, y) ? 8 : 0);
-        if (mask === 0) continue; // solid interior stays dark
+        // A concave junction may touch traversable floor at a corner only.
+        // The cardinal-only pass previously left a conspicuous dark square
+        // there even though the tile belongs to the visible wall boundary.
+        const diagonalMask = (floor(x - 1, y - 1) ? 1 : 0)
+          | (floor(x + 1, y - 1) ? 2 : 0)
+          | (floor(x + 1, y + 1) ? 4 : 0)
+          | (floor(x - 1, y + 1) ? 8 : 0);
+        if (mask === 0 && diagonalMask === 0) continue;
+        // Filler frame only for diagonal-only contacts; the 4-side lookup
+        // remains unchanged until the atlas is fully mapped.
+        const frame = mask === 0 ? 12 : frames[mask];
         this.add.image(x * layout.cellSize, y * layout.cellSize,
-          'dungeon-wall-tiles', frames[mask])
+          'dungeon-wall-tiles', frame)
           .setOrigin(0, 0)
           .setDepth(-19);
         if (debugWallFrames) {
-          // Tiny tile id and adjacency mask for exact atlas mapping review.
+          // Frame/cardinal mask/diagonal mask for mapping review.
           this.add.text(x * layout.cellSize + 2, y * layout.cellSize + 2,
-            `${frames[mask]}/${mask.toString(16)}`, {
+            `${frame}/${mask.toString(16)}/${diagonalMask.toString(16)}`, {
               fontFamily: 'monospace', fontSize: '10px',
               color: '#ffffff', backgroundColor: '#111111',
             }).setDepth(30).setScrollFactor(1);
