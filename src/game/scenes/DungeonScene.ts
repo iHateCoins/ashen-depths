@@ -483,12 +483,16 @@ export class DungeonScene extends Phaser.Scene {
       dungeonFloorAt(layout, {x, y});
     // Four cardinal floor neighbors: N=1, E=2, S=4, W=8.
     // Frame 12 is wall interior; the other frames have stone/floor borders.
+    // Indices identify the wall/floor shapes in the PixelLab sheet.
+    // In particular: E-only is frame 8, N/S is frame 2, NW is 7,
+    // and SW is 4. These should not use wall interiors or floor filler.
     const frames: readonly number[] = [
-      12, 9, 13, 10,
-      3, 6, 5, 7,
-      11, 4, 6, 2,
-      15, 8, 14, 1,
+      12, 9, 8, 10,
+      3, 2, 5, 7,
+      11, 7, 6, 2,
+      4, 8, 14, 1,
     ];
+    const debugWallFrames = new URLSearchParams(window.location.search).has('wallDebug');
     for (let y = 0; y < layout.rows; y++) {
       for (let x = 0; x < layout.columns; x++) {
         if (floor(x, y)) continue;
@@ -501,6 +505,14 @@ export class DungeonScene extends Phaser.Scene {
           'dungeon-wall-tiles', frames[mask])
           .setOrigin(0, 0)
           .setDepth(-19);
+        if (debugWallFrames) {
+          // Tiny tile id and adjacency mask for exact atlas mapping review.
+          this.add.text(x * layout.cellSize + 2, y * layout.cellSize + 2,
+            `${frames[mask]}/${mask.toString(16)}`, {
+              fontFamily: 'monospace', fontSize: '10px',
+              color: '#ffffff', backgroundColor: '#111111',
+            }).setDepth(30).setScrollFactor(1);
+        }
       }
     }
   }
