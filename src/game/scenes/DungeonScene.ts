@@ -486,11 +486,16 @@ export class DungeonScene extends Phaser.Scene {
     // Indices identify the wall/floor shapes in the PixelLab sheet.
     // In particular: E-only is frame 8, N/S is frame 2, NW is 7,
     // and SW is 4. These should not use wall interiors or floor filler.
+    // Explicit cardinal-wall edge mapping. Three-sided adjacency means
+    // the blocked cell borders floor along a continuous straight edge;
+    // the previous lookup incorrectly chose corner art for these cases.
+    // The four-sided and opposing-side cases need full 2x2 terrain
+    // transitions in a later pass; keep the existing safe fallback.
     const frames: readonly number[] = [
       12, 9, 8, 10,
-      3, 2, 5, 7,
-      11, 7, 6, 2,
-      4, 8, 14, 1,
+      3, 2, 5, 2,
+      11, 7, 6, 9,
+      4, 11, 3, 12,
     ];
     const debugWallFrames = new URLSearchParams(window.location.search).has('wallDebug');
     for (let y = 0; y < layout.rows; y++) {
