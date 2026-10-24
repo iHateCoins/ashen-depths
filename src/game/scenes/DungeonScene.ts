@@ -483,11 +483,14 @@ export class DungeonScene extends Phaser.Scene {
       dungeonFloorAt(layout, {x, y});
     // Four cardinal floor neighbors: N=1, E=2, S=4, W=8.
     // Frame 12 is wall interior; the other frames have stone/floor borders.
+    // Indices identify the wall/floor shapes in the PixelLab sheet.
+    // In particular: E-only is frame 8, N/S is frame 2, NW is 7,
+    // and SW is 4. These should not use wall interiors or floor filler.
     const frames: readonly number[] = [
-      12, 9, 13, 10,
-      3, 6, 5, 7,
-      11, 4, 6, 2,
-      15, 8, 14, 1,
+      12, 9, 8, 10,
+      3, 2, 5, 7,
+      11, 7, 6, 2,
+      4, 8, 14, 1,
     ];
     for (let y = 0; y < layout.rows; y++) {
       for (let x = 0; x < layout.columns; x++) {
